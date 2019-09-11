@@ -12,5 +12,6 @@ include(common/GLEW.cmake)
 include(common/GLFW.cmake)
 
 #--- Subprojects
-add_subdirectory(vector)
+#add_subdirectory(vector)
+add_subdirectory(raytrace)
 
