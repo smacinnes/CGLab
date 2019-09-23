@@ -14,5 +14,5 @@ include(common/GLFW.cmake)
 #--- Subprojects
 #add_subdirectory(vector)
 #add_subdirectory(raytrace)
-add_subdirectory(rsaterize)
+add_subdirectory(rasterize)
 
