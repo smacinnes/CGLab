@@ -20,14 +20,14 @@ Vec3 bindPixelValues(const Vec3& v){
     return Vec3(bindPixel(v(0)),bindPixel(v(1)),bindPixel(v(2)));
 }
 // multiply two vectors elementwise - ex for colours
-Vec3 elmult(const Vec3& v1,const Vec3& v2){
+Vec3 mult(const Vec3& v1,const Vec3& v2){
     return Vec3(v1(0)*v2(0),v1(1)*v2(1),v1(2)*v2(2));
 }
 // multiply a vector by a scaler - is there really no function for this already?
-Vec3 elmult(const Vec3& v,float s){
+Vec3 mult(const Vec3& v,float s){
     return Vec3(v(0)*s,v(1)*s,v(2)*s);
 }
-Vec3 elmult(float s,const Vec3& v){
+Vec3 mult(float s,const Vec3& v){
     return Vec3(v(0)*s,v(1)*s,v(2)*s);
 }
 void printVec(const Vec3& v){
@@ -37,24 +37,60 @@ void printlnVec(const Vec3& v){
     printf("%.3f  %.3f  %.3f\n",double(v(0)),double(v(1)),double(v(2)));
 }
 
+/*
+ *  The point (0,0,0) will be an absolute position in space and is not defined
+ *  relative to the camera, image plane or anything else in the scene. The
+ *  distance from the camera to the image plane is defined as 1.0 (but this
+ *  can be changed under ImagePlane) and all other dimensions will be modeled
+ *  off of that distance.
+ */
+
 class Camera {
 public:
-    Vec3 position = Vec3(0,0,0);
+    // set these three manually
+    Vec3 position =  Vec3(0,0,5);   // location of body of camera
+    Vec3 lookingAt = Vec3(0,0,4);   // where the camera is facing
+    Vec3 up = Vec3(0,1,0);          // tilt of camera (0,1,0) is no tilt - add easier adjustment
+    // these will be set during setup() call
+    Vec3 viewingDir = Vec3(0,0,0);
+    Vec3 rightAxis = Vec3(0,0,0);
+    Vec3 upAxis = Vec3(0,0,0);
+
+    void setup(){
+        viewingDir = lookingAt - position;
+        viewingDir.normalize();
+        rightAxis = up.cross(viewingDir);
+        rightAxis.normalize();
+        upAxis = viewingDir.cross(rightAxis);
+    }
 };
 
 class ImagePlane {
-    // distance units are defined respective to the image plane
-    // half the height of the plane is defined as length one
 private:
+    // set these manually
     int wResolution = 640;      // default
     int hResolution = 480;      // default
-    float viewingAngle = 90.0f; // recommended
-    float whRatio = float(wResolution)/hResolution;
+    float viewingAngle = 90.0f; // recommended - most natural for humans
+    float distToCam = 1.0f;     // all other dimensions based off this
+    // rest are calculated automatically
+    Vec3 center = Vec3(0,0,0);
+    Vec3 corner = Vec3(0,0,0);
+    float hwRatio = float(hResolution)/wResolution;
+    float halfWidth = 0.0f;
+
 public:
     Image<Colour> image = Image<Colour>(hResolution, wResolution);
-    float distFromCam = -whRatio/tanf(viewingAngle/2.0f);                   // (-) is in front of camera
-    Vec3 llc = Vec3(-whRatio,-1,distFromCam);   // lower left corner
-    Vec3 urc = Vec3( whRatio, 1,distFromCam);   // upper right corner
+    Vec3 llc = Vec3(0,0,0);   // lower left corner
+    Vec3 pixRi = Vec3(0,0,0); // move one pixel to the right
+    Vec3 pixUp = Vec3(0,0,0); // move one pixel up
+
+    void setup(const Camera& c){
+        center = c.position+mult(c.viewingDir,distToCam);
+        halfWidth = distToCam*tanf(viewingAngle/2.0f);
+        llc = center - mult(c.rightAxis,halfWidth) - mult(c.upAxis,halfWidth*hwRatio);
+        pixRi = mult(2*halfWidth/(wResolution-1),c.rightAxis);
+        pixUp = mult(2*halfWidth*hwRatio/(hResolution-1),c.upAxis);
+    }
 };
 
 class Sphere {
@@ -72,7 +108,6 @@ public:
     Vec3 orig = Vec3(0,0,0);
     Vec3 dir = Vec3(0,0,0);
 private:
-    Vec2 inPlane = Vec2(0,0);   // intersection wrt width/height [0,1]
     Vec3 co = Vec3(0,0,0);      //center of object to origin of ray
     float disc = 0.0f;
     float t = 0.0f;
@@ -80,10 +115,7 @@ private:
 public:
     // intersect image plane at specified pixel
     void constructPrimary(const ImagePlane& im,int row,int col,const Camera& cam){
-        inPlane = Vec2((col+0.5)/im.image.cols(),(row+0.5)/im.image.rows());
-        orig = Vec3((im.urc(0)-im.llc(0))*inPlane(0)+im.llc(0),
-                    (im.urc(1)-im.llc(1))*inPlane(1)+im.llc(1),
-                     im.distFromCam);
+        orig = im.llc + mult(im.pixRi,col-1) + mult(im.pixUp,row);
         // pixel direction as unit vector
         dir = orig - cam.position;
         dir.normalize();
@@ -129,18 +161,18 @@ public: // properties
 
     Colour illuminate(const Sphere& s,const Ray& r,const Vec3& intersection){
         // ambient light calculation
-        Ia = bindPixelValues(elmult(s.ka,ambient));
+        Ia = bindPixelValues(mult(s.ka,ambient));
 
         // diffused light calculation
         normal = intersection - s.center;
         normal.normalize();
         lightAngle = intersection - position;
         lightAngle.normalize();
-        Id = elmult(elmult(s.kd,float(lightAngle.dot(normal))),diffuse);
+        Id = mult(mult(s.kd,float(lightAngle.dot(normal))),diffuse);
 
         // specular light calculation
-        R = elmult(2*lightAngle.dot(normal),normal)-lightAngle;
-        Is = elmult(elmult(s.ks,pow(R.dot(-r.dir),s.alpha)),specular);
+        R = mult(2*lightAngle.dot(normal),normal)-lightAngle;
+        Is = mult(mult(s.ks,pow(R.dot(-r.dir),s.alpha)),specular);
 
         bindValues();
         return (Ia + Id + Is);
@@ -151,17 +183,23 @@ public: // properties
 
 int main(int, char**){
 
+    /* PROBLEMS
+     * when moving objects around scene, x always seems reversed except when moving
+     * light source, in which case x is fine and the other directions seem reversed
+     */
     // DEFINE CAMERA
-    Camera cam;
+    Camera cam = {Vec3(0,0,10),Vec3(0,0,-10)}; // {position,lookingAt}
+    cam.setup();
 
     // DEFINE IMAGE PLANE
     ImagePlane im;
+    im.setup(cam);
 
     // DEFINE OBJECTS IN SCENE (+x: right +y: up +z: close)
-    Sphere s = {Vec3(0,0,-3),1,Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),5};
+    Sphere s = {Vec3(0,0,2),1,Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),5};
 
     // DEFINE LIGHTING SOURCES
-    LightSource L = {Vec3(-5,-5,-5),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f)};
+    LightSource L = {Vec3(0,0,-5),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f)};
 
     // INITIALIZE LOOP VARIABLES
     Ray pixel;
