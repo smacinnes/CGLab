@@ -20,18 +20,18 @@ float bindPixel(float value){
 Vec3 bindPixelValues(const Vec3& v){
     return Vec3(bindPixel(v(0)),bindPixel(v(1)),bindPixel(v(2)));
 }
-// multiply two vectors elementwise
+// multiply two vectors elementwise (useful for colours)
 Vec3 mult(const Vec3& v1,const Vec3& v2){
     return Vec3(v1(0)*v2(0),v1(1)*v2(1),v1(2)*v2(2));
 }
-// print a vector for debugging purposes
+// print a vector
 void printVec(const Vec3& v){
-    printf("%.3f  %.3f  %.3f",double(v(0)),double(v(1)),double(v(2)));
-}
-void printlnVec(const Vec3& v){
     printf("%.3f  %.3f  %.3f\n",double(v(0)),double(v(1)),double(v(2)));
 }
-
+// if two floats are close enough
+bool equal(float a, float b, float e){
+    return std::abs(a-b) <= e;
+}
 /*
  *  The point (0,0,0) will be an absolute position in space and is not defined
  *  relative to the camera, image plane or anything else in the scene. The
@@ -55,15 +55,15 @@ public:
     Vec3 upAxis = Vec3(0,0,0);
 
     void setup(){
-        viewingDir = lookingAt - position;
-        viewingDir.normalize();
-        rightAxis = up.cross(viewingDir);
-        rightAxis.normalize();
+        viewingDir = (lookingAt - position).normalized();
+        rightAxis = (up.cross(viewingDir)).normalized();
         upAxis = viewingDir.cross(rightAxis); // will be unit vec
     }
 };
 
 // Class defining all properties of the image plane
+// For simplicity in contructing the environment, the dist from the image plane
+// to the camera is defined as 1.0
 class ImagePlane {
 private:
     // set these manually
@@ -87,61 +87,184 @@ public:
         llc = center - c.rightAxis*halfWidth - c.upAxis*halfWidth*hwRatio;
         pixRi = 2*halfWidth/(wResolution-1)*c.rightAxis;
         pixUp = 2*halfWidth*hwRatio/(hResolution-1)*c.upAxis;
+
+        printf("\nCorners of Image Plane are:\n");
+        printf("LLC: ");
+        printVec(llc);
+        printf("URC: ");
+        printVec(center+c.rightAxis*halfWidth+c.upAxis*halfWidth*hwRatio);
+        printf("Dist to Cam: %.1f\n",double(distToCam));
+        printf("View Angle: %.1f\n",double(viewingAngle));
     }
 };
 
-class Sphere {
-public:
-    Vec3 center = Vec3(0,0,0);
-    float radius = 0.0f;
-    Colour ka = Colour(0.0f, 0.0f, 0.0f);
-    Colour kd = Colour(0.0f, 0.0f, 0.0f);
-    Colour ks = Colour(0.0f, 0.0f, 0.0f);
-    float alpha = 0.0f;
-};
-
+// the intersect() and related methods are stored in the object class definition
+// for purposes of overloading
 class Ray {
 public:
     Vec3 orig = Vec3(0,0,0);
     Vec3 dir = Vec3(0,0,0);
 private:
     Vec3 co = Vec3(0,0,0);      //center of object to origin of ray
-    float disc = 0.0f;
-    float t1 = 0.0f;
-    float t2 = 0.0f;
-    float b = 0.0f;
 public:
     // intersect image plane at specified pixel
     void constructPrimary(const ImagePlane& im,int row,int col,const Camera& cam){
         orig = im.llc + im.pixRi*float(col-1) + im.pixUp*float(row-1);
         // pixel direction as unit vector
-        dir = orig - cam.position;
-        dir.normalize();
+        dir = (orig - cam.position).normalized();
     }
-    // returns true iff the ray has a valid intersection with the given sphere
-    // "valid" meaning that at least one solution is positive
-    // two pos solutions:   ray starts before sphere    (desired)
-    // one pos solution:    ray starts inside sphere    (cross section - optional)
-    // two neg solution:    ray starts after sphere     (ignore)
-    // two comp solutions:  ray does not intersect      (ignore)
-    // this function stores the discriminant value and any solution values
-    // it calculates to avoid unnecessary recalculations
-    bool intersects(const Sphere& s){
-        co = orig-s.center;
-        disc = powf(dir.dot(co),2)-powf(co.norm(),2)+powf(s.radius,2);
-        if (disc < 0.0f) return false;
-        b = -(dir.dot(co));
-        t1 = b+sqrt(disc);
-        t2 = b-sqrt(disc);
-        return t1 > 0;                  // change to t2 to avoid cross sections
+    // ray location with given parameter
+    Vec3 at(float t) const {
+        return orig+t*dir;
+    }
+};
+
+// All objects in the scene will derive from this class and
+// have these material properties and methods for simple design
+class Obj {
+public:
+    Colour ka = Colour(0.0f, 0.0f, 0.0f);
+    Colour kd = Colour(0.0f, 0.0f, 0.0f);
+    Colour ks = Colour(0.0f, 0.0f, 0.0f);
+    float alpha = 0.0f;
+
+    // can these be const references?
+    Obj(Vec3 a,Vec3 d,Vec3 s,float al) :
+        ka(a),
+        kd(d),
+        ks(s),
+        alpha(al) {}
+
+    // returns the dist to the valid intersection if there is one, -1 otherwise
+    // ray is o+td, this returns t or -1
+    virtual float intersects(const Ray&) = 0;
+
+    // returns the normal at the specified point
+    virtual Vec3 normal(const Vec3&) const = 0;
+
+    // virtual destructor - compiler complains without it
+    virtual ~Obj() {}
+};
+
+// defines an infinite plane (ex the floor)
+// use triangles (yet to be implemented) for walls
+class Plane : public Obj{
+public:
+    Vec3 point = Vec3(0,0,0);
+    Vec3 norm = Vec3(0,1,0);
+private:
+    float temp = 0.0f;
+public:
+    Plane(Vec3 p,Vec3 n,Vec3 a,Vec3 d,Vec3 s,float al) :
+        Obj(a,d,s,al),
+        point(p),
+        norm(n.normalized()){}
+
+    /* returns the distance along the ray from the plane to the
+     * ray's origin if there is a valid intersection and -1 otherwise
+     * "valid" meaning a single positive solution
+     */
+    float intersects(const Ray& r){
+        temp = norm.dot(r.dir);                     // hold dot prod op
+        if(equal(temp,0.0f,0.001f)) return -1.0f;   // if dot~=0
+        temp = (point-r.orig).dot(norm)/temp;       // hold scalar solution
+        if (temp > 0) return temp;                  // ensure (+) solution
+        return -1.0f;
     }
 
-    // assumes intersects() has already been evaluated to true
-    // therefore disc, t1 and t2 have been calculated
-    // add error message printouts for invalid disc and t?
-    Vec3 sphereIntersection(){
-        if (t2>0) return orig+t2*dir;
-        return orig+t1*dir;
+    // return normal (parameter there for inheritance)
+    Vec3 normal(const Vec3&) const {
+        return norm;
+    }
+};
+
+// defines a sphere via a point and a radius
+class Sphere : public Obj {
+public:
+    Vec3 center = Vec3(0,0,0);
+    float radius = 0.0f;
+private:
+    Vec3 co = Vec3(0,0,0);      // center of sphere to origin of ray
+    float disc = 0.0f;
+    float t1 = 0.0f;
+    float t2 = 0.0f;
+    float b = 0.0f;
+public:
+    Sphere(Vec3 c,float r,Vec3 a,Vec3 d,Vec3 s,float al) :
+        Obj(a,d,s,al),
+        center(c),
+        radius(r){}
+
+    /* returns the distance along the ray from the sphere to the
+     * ray's origin if there is a valid intersection and -1 otherwise
+     * "valid" meaning that at least one solution is positive
+     * two pos:    ray starts before sphere    (return smallest solution)
+     * one pos:    ray starts inside sphere    (cross section - optional)
+     * two neg:    ray starts after sphere     (ignore)
+     * no real:    ray does not intersect      (ignore)
+     */
+    float intersects(const Ray& r){
+        co = r.orig-center;
+        disc = powf(r.dir.dot(co),2)-powf(co.norm(),2)+powf(radius,2);
+        if (disc < 0.0f) return -1.0f; // complex solutions, no intersection
+        b = -(r.dir.dot(co));
+        t1 = b+sqrt(disc);
+        t2 = b-sqrt(disc);
+        if (t1 < 0) return -1.0f;       // ray starts after sphere
+        // to avoid cross sections, change the previous line to read "t2" and
+        // comment out the following line
+        if (t2 < 0) return t1;
+        return t2;
+    }
+
+    // return normal
+    Vec3 normal(const Vec3& p) const {
+        return (p-center).normalized();
+    }
+};
+
+// remember destructors or will have memory leak
+class Objs {
+public:
+    std::vector<Obj*> objects;
+    // better way of doing this?
+    Obj* closestObj = nullptr;
+    float minDist = std::numeric_limits<float>::max();
+    float dist = -1.0f;
+
+    Objs(std::vector<Plane*> p,std::vector<Sphere*> s){
+        for(auto it=p.begin();it!=p.end();++it){
+            objects.push_back(*it);
+        }
+        for(auto it=s.begin();it!=s.end();++it){
+            objects.push_back(*it);
+        }
+    }
+
+    // return the closest object as well as the distance along the ray
+    std::tuple<Obj*,float> findFirstObject(const Ray& r){
+        // reset variables from last call
+        closestObj = nullptr;
+        minDist = std::numeric_limits<float>::max();
+        dist = -0.1f;
+
+        // for every object in scene
+        for(auto it=objects.begin();it!=objects.end();++it){
+
+            // this will be t in x=o+td equation of line
+            // each intersects() method will return -1 if there
+            // is no VALID intersection (positive, not infinite etc)
+            dist = (*it)->intersects(r);
+
+            if (0.0f < dist && dist < minDist) {
+                // then it is the closest object so far, so store
+                // the dist and the reference to the object
+                minDist = dist;
+                closestObj = *it;
+            }
+        }
+        // closestObj will still be nullptr if the ray didn't hit anything
+        return std::make_tuple(closestObj,minDist);
     }
 };
 
@@ -151,53 +274,66 @@ public: // properties
     Colour ambient = Colour(0.0f, 0.0f, 0.0f);
     Colour diffuse = Colour(0.0f, 0.0f, 0.0f);
     Colour specular = Colour(0.0f, 0.0f, 0.0f);
-    // for calculations
+private: // for calculations
     Vec3 normal = Vec3(0,0,0);
     Vec3 lightAngle = Vec3(0,0,0);
     Vec3 R = Vec3(0,0,0);
     Colour Ia = Colour(0.0f, 0.0f, 0.0f);
     Colour Id = Colour(0.0f, 0.0f, 0.0f);
     Colour Is = Colour(0.0f, 0.0f, 0.0f);
+public:
+
+    LightSource (Vec3 pos, Colour a,Colour d,Colour s) {
+        position = pos;
+        ambient = a;
+        diffuse = d;
+        specular = s;
+    }
 
     // ensure all light levels fall in correct range
     void bindValues(){
         Ia = bindPixelValues(Ia);
         // if diffuse <= 0, specular must be 0
-        for(int i=0;i<3;i++) if(Id(i)<0.0f) Is(i)=0.0f;
+        for(int i=0;i<3;i++){ if(Id(i)<0.0f){ Is(i)=0.0f;}}
         Id = bindPixelValues(Id);
         Is = bindPixelValues(Is);
     }
 
-    Colour illuminate(const Sphere& s,const Ray& r,const Vec3& intersection){
-        // ambient light calculation
-        Ia = bindPixelValues(mult(s.ka,ambient));
+    Colour illuminate(const Obj* o,const Ray& r,const Vec3& intersection){
+           // ambient light calculation
+           Ia = mult(o->ka,ambient);
 
-        // diffused light calculation
-        normal = intersection - s.center;
-        normal.normalize();
-        lightAngle = intersection - position;
-        lightAngle.normalize();
-        Id = mult(lightAngle.dot(normal)*s.kd,diffuse);
+           // diffused light calculation
+           normal = o->normal(intersection);
+           lightAngle = (intersection - position).normalized();
+           Id = mult(lightAngle.dot(normal)*o->kd,diffuse);
 
-        // specular light calculation
-        R = 2*lightAngle.dot(normal)*normal-lightAngle;
-        Is = mult(s.ks*pow(R.dot(-r.dir),s.alpha),specular);
+           // specular light calculation
+           R = 2*lightAngle.dot(normal)*normal-lightAngle;
+           Is = mult(o->ks*pow(R.dot(-r.dir),o->alpha),specular);
 
-        bindValues();
-        return (Ia + Id + Is);
-    }
+           bindValues();
+           return (Ia + Id + Is);
+       }
 };
+
+
 
 // sets up the camera and image plane
 // when moving objects in the scene, the x-direction is reversed from what
 // would be intuitive, except when moving the light sources, in which case
 // the x-axis is intuitive but the others are not. Correct that behavior here
 // so the user can define all objects intuitively
-void setup(Camera& cam,ImagePlane& im,Sphere& s,LightSource& L){
+void setup(Camera& cam,ImagePlane& im,std::vector<Sphere*> &spheres,LightSource& L){
     cam.position    = mult(cam.position, Vec3(-1,1,1));
     cam.lookingAt   = mult(cam.lookingAt,Vec3(-1,1,1));
-    s.center        = mult(s.center,     Vec3(-1,1,1));
-    L.position      = mult(L.position,   Vec3(1,-1,-1));
+
+    // may need this for lights and planes too
+    for(auto it=spheres.begin();it!=spheres.end();++it){
+        (*it)->center = mult((*it)->center, Vec3(-1,1,1));
+    }
+
+    L.position = mult(L.position,Vec3(1,-1,-1));
 
     cam.setup();
     im.setup(cam);
@@ -208,24 +344,36 @@ int main(int, char**){
 
     // DEFINE CAMERA
     // {position,lookingAt}
-    Camera cam = {Vec3(0,0,4),Vec3(0,0,0)};
+    Camera cam = {Vec3(0,0,4),Vec3(0,0,3)};
 
     // DEFINE IMAGE PLANE
     // default is 640x480 w/ 90 deg view angle
     ImagePlane im;
 
+    // {point, normal, ambient, diffuse, specular, alpha}
+    Plane p(Vec3(0,1,0),Vec3(0,1,0),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),10);
+    std::vector<Plane*> planes;
+    planes.push_back(&p);
+
     // DEFINE OBJECTS IN SCENE
     // {position,radius,ambient,diffuse,specular,alpha}
-    Sphere s = {Vec3(0,0,0),1,Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),5};
+    Sphere s1(Vec3(0,0,-4),3,Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),5);
+    Sphere s2(Vec3(0,0,0),1,Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),5);
+    std::vector<Sphere*> spheres;
+    spheres.push_back(&s1);
+    spheres.push_back(&s2);
 
     // DEFINE LIGHTING SOURCES
     // {position,ambient,diffuse,specular}
-    LightSource L = {Vec3(5,5,2),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f)};
+    LightSource L(Vec3(5,5,2),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f));
 
-    setup(cam,im,s,L);
+    setup(cam,im,spheres,L);
 
     // INITIALIZE LOOP VARIABLES
     Ray pixel;
+    Objs objects = Objs(planes,spheres);
+    Obj* closestObject = nullptr;
+    float distance = 0.0f;
 
     // add test for image plane intersecting any objects?
 
@@ -234,14 +382,10 @@ int main(int, char**){
         for (int col = 0; col < im.image.cols(); ++col) {
 
             pixel.constructPrimary(im,row,col,cam);
-
-            if (pixel.intersects(s)) {
-
-                im.image(row,col) = L.illuminate(s,pixel,pixel.sphereIntersection());
-
-            } else {
-                im.image(row,col) = black();
-            }
+            // get both the object and the distance
+            std::tie(closestObject,distance) = objects.findFirstObject(pixel);
+            if (closestObject != nullptr)
+                im.image(row,col) = L.illuminate(closestObject,pixel,pixel.at(distance));
 
 
         }
@@ -252,4 +396,3 @@ int main(int, char**){
 
     return EXIT_SUCCESS;
 }
-
