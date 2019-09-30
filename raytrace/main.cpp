@@ -430,7 +430,7 @@ int main(int, char**){
 
     // DEFINE LIGHTING SOURCES
     // {position,ambient,diffuse,specular}
-    LightSource L(Vec3(4,4,4),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f));
+    LightSource L(Vec3(-4,4,4),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f));
 
     bool swapXAxis = true;
     setup(cam,im,swapXAxis,planes,spheres,L);
