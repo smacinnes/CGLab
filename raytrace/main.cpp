@@ -58,6 +58,8 @@ public:
         viewingDir = (lookingAt - position).normalized();
         rightAxis = (up.cross(viewingDir)).normalized();
         upAxis = viewingDir.cross(rightAxis); // will be unit vec
+        printf("Camera:");
+        printVec(position);
     }
 };
 
@@ -67,9 +69,9 @@ public:
 class ImagePlane {
 private:
     // set these manually
-    int wResolution = 640;      // default
-    int hResolution = 480;      // default
-    float viewingAngle = 90.0f; // recommended - most natural for humans
+    int wResolution = 640;      // default is 640
+    int hResolution = 480;      // default is 480
+    float viewingAngle = 90.0f; // changing this causes strange behavior
     float distToCam = 1.0f;     // all other dimensions based off this
     // these are calculated automatically
     Vec3 center = Vec3(0,0,0);
@@ -104,14 +106,28 @@ class Ray {
 public:
     Vec3 orig = Vec3(0,0,0);
     Vec3 dir = Vec3(0,0,0);
-private:
-    Vec3 co = Vec3(0,0,0);      //center of object to origin of ray
 public:
+
+    // create a Ray between these two points
+    // offset is distance along ray to move the start position
+    // to avoid self intersection
+    // return the distance between the points
+    float createBetween(const Vec3& from, const Vec3& to, float offset){
+        dir = (to-from).normalized();
+        orig = from+offset*dir;
+        return (to-orig).norm();
+    }
     // intersect image plane at specified pixel
     void constructPrimary(const ImagePlane& im,int row,int col,const Camera& cam){
-        orig = im.llc + im.pixRi*float(col-1) + im.pixUp*float(row-1);
-        // pixel direction as unit vector
-        dir = (orig - cam.position).normalized();
+        // this way makes the ray start at the image plane
+        // good for cross sections, bad for realism
+        /* orig = im.llc + im.pixRi*float(col-1) + im.pixUp*float(row-1);
+         * dir = (orig - cam.position).normalized(); */
+        // this way makes the ray start at the camera
+        // good for realism, cant do cross sections
+        orig = cam.position;
+        dir = (im.llc+im.pixRi*float(col-1)+im.pixUp*float(row-1)
+               -cam.position).normalized();
     }
     // ray location with given parameter
     Vec3 at(float t) const {
@@ -158,7 +174,11 @@ public:
     Plane(Vec3 p,Vec3 n,Vec3 a,Vec3 d,Vec3 s,float al) :
         Obj(a,d,s,al),
         point(p),
-        norm(n.normalized()){}
+        norm(n.normalized()){
+        printf("Plane: ");
+        printVec(point);
+        printVec(norm);
+    }
 
     /* returns the distance along the ray from the plane to the
      * ray's origin if there is a valid intersection and -1 otherwise
@@ -166,7 +186,7 @@ public:
      */
     float intersects(const Ray& r){
         temp = norm.dot(r.dir);                     // hold dot prod op
-        if(equal(temp,0.0f,0.001f)) return -1.0f;   // if dot~=0
+        if(equal(temp,0.0f,0.0001f)) return -1.0f;  // if dot~=0
         temp = (point-r.orig).dot(norm)/temp;       // hold scalar solution
         if (temp > 0) return temp;                  // ensure (+) solution
         return -1.0f;
@@ -193,7 +213,11 @@ public:
     Sphere(Vec3 c,float r,Vec3 a,Vec3 d,Vec3 s,float al) :
         Obj(a,d,s,al),
         center(c),
-        radius(r){}
+        radius(r){
+        printf("Sphere: ");
+        printVec(center);
+        printf("%.2f",double(radius));
+    }
 
     /* returns the distance along the ray from the sphere to the
      * ray's origin if there is a valid intersection and -1 otherwise
@@ -227,11 +251,12 @@ public:
 class Objs {
 public:
     std::vector<Obj*> objects;
+private:
     // better way of doing this?
     Obj* closestObj = nullptr;
     float minDist = std::numeric_limits<float>::max();
     float dist = -1.0f;
-
+public:
     Objs(std::vector<Plane*> p,std::vector<Sphere*> s){
         for(auto it=p.begin();it!=p.end();++it){
             objects.push_back(*it);
@@ -281,6 +306,10 @@ private: // for calculations
     Colour Ia = Colour(0.0f, 0.0f, 0.0f);
     Colour Id = Colour(0.0f, 0.0f, 0.0f);
     Colour Is = Colour(0.0f, 0.0f, 0.0f);
+    Ray shadow;
+    float shadowLength = 0.0f;
+    float interLength = 0.0f;
+    Obj* obj; // this is not used but must be there for findFirstObject()
 public:
 
     LightSource (Vec3 pos, Colour a,Colour d,Colour s) {
@@ -288,6 +317,8 @@ public:
         ambient = a;
         diffuse = d;
         specular = s;
+        printf("Light Source: ");
+        printVec(position);
     }
 
     // ensure all light levels fall in correct range
@@ -299,22 +330,37 @@ public:
         Is = bindPixelValues(Is);
     }
 
-    Colour illuminate(const Obj* o,const Ray& r,const Vec3& intersection){
-           // ambient light calculation
-           Ia = mult(o->ka,ambient);
+    // determine the colour of a particular pixel
+    // use Phong shading method
+    // use shadow rays
+    //
+    Colour illuminate(Objs objs,const Obj* o,const Ray& r,const Vec3& intersection){
+        // ambient light calculation
+        Ia = mult(o->ka,ambient);
 
-           // diffused light calculation
-           normal = o->normal(intersection);
-           lightAngle = (intersection - position).normalized();
-           Id = mult(lightAngle.dot(normal)*o->kd,diffuse);
+        // create ray from intersection to light source
+        // and store the distance between those points
+        shadowLength = shadow.createBetween(intersection,position,0.01f);
+        // check for objects along the shadow ray
+        std::tie(obj,interLength) = objs.findFirstObject(shadow);
+        // if there is an object before the light, don't calculate Id or Is
+        //if (false){
+        if (interLength > 0 && shadowLength >0 && interLength < shadowLength){
+            Id = Colour(0.0f, 0.0f, 0.0f);
+            Is = Colour(0.0f, 0.0f, 0.0f);
+        } else {
+            // diffused light calculation
+            normal = o->normal(intersection);
+            lightAngle = (position-intersection).normalized();
+            Id = mult(lightAngle.dot(normal)*o->kd,diffuse);
 
-           // specular light calculation
-           R = 2*lightAngle.dot(normal)*normal-lightAngle;
-           Is = mult(o->ks*pow(R.dot(-r.dir),o->alpha),specular);
-
-           bindValues();
-           return (Ia + Id + Is);
-       }
+            // specular light calculation
+            R = 2*lightAngle.dot(normal)*normal-lightAngle;
+            Is = mult(o->ks*pow(R.dot(-r.dir),o->alpha),specular);
+        }
+        bindValues();
+        return (Ia + Id + Is);
+    }
 };
 
 
@@ -322,52 +368,97 @@ public:
 // sets up the camera and image plane
 // when moving objects in the scene, the x-direction is reversed from what
 // would be intuitive, except when moving the light sources, in which case
-// the x-axis is intuitive but the others are not. Correct that behavior here
-// so the user can define all objects intuitively
-void setup(Camera& cam,ImagePlane& im,std::vector<Sphere*> &spheres,LightSource& L){
+// the x-axis is intuitive but the others are not. This function corrects
+// that behavior here so the user can define all objects intuitively
+void setup(Camera& cam, ImagePlane& im, std::vector<Plane*> &planes,
+           std::vector<Sphere*> &spheres, LightSource& L){
+    // x-left, y-up, x-out when this is uncommented
+    /*
     cam.position    = mult(cam.position, Vec3(-1,1,1));
     cam.lookingAt   = mult(cam.lookingAt,Vec3(-1,1,1));
-
-    // may need this for lights and planes too
+    L.position = mult(L.position,Vec3(-1,1,1));
+    for(auto it=planes.begin();it!=planes.end();++it){
+        (*it)->point = mult((*it)->point, Vec3(-1,1,1));
+        (*it)->norm = mult((*it)->norm, Vec3(-1,1,1));
+    }
     for(auto it=spheres.begin();it!=spheres.end();++it){
         (*it)->center = mult((*it)->center, Vec3(-1,1,1));
     }
 
-    L.position = mult(L.position,Vec3(1,-1,-1));
+
+    //*/
 
     cam.setup();
     im.setup(cam);
 }
 
+// {point, normal, ambient, diffuse, specular, alpha}
+// normal can be any length and it will be normalized during construction
+std::vector<Plane*> createPlanes() {
+
+    //Plane ceiling(Vec3(0,1,0),Vec3(0,1,0),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
+    //Plane left(Vec3(-1,0,0),  Vec3(1,0,0),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
+    //Plane right(Vec3(1,0,0),  Vec3(1,0,0),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
+    //Plane back(Vec3(0,0,-1),  Vec3(0,0,1),Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),2);
+
+    std::vector<Plane*> planes;
+
+
+    //planes.push_back(&ceiling);
+    //planes.push_back(&left);
+    //planes.push_back(&right);
+    //planes.push_back(&back);
+
+    return planes;
+}
+
 int main(int, char**){
-    // (+x: right +y: up +z: out of screen)
+    // (+x: left +y: up +z: out of screen)
 
     // DEFINE CAMERA
     // {position,lookingAt}
-    Camera cam = {Vec3(0,0,4),Vec3(0,0,3)};
+    Camera cam = {Vec3(0,0,4),Vec3(0,0,0)};
 
     // DEFINE IMAGE PLANE
     // default is 640x480 w/ 90 deg view angle
     ImagePlane im;
 
-    // {point, normal, ambient, diffuse, specular, alpha}
-    Plane p(Vec3(0,1,0),Vec3(0,1,0),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),10);
-    std::vector<Plane*> planes;
-    planes.push_back(&p);
-
     // DEFINE OBJECTS IN SCENE
-    // {position,radius,ambient,diffuse,specular,alpha}
-    Sphere s1(Vec3(0,0,-4),3,Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),5);
-    Sphere s2(Vec3(0,0,0),1,Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),5);
+
+    // PLANES
+    // Plane p(point, normal, ambient, diffuse, specular, alpha)
+    // normal can be any length and it will be normalized during construction
+    Plane floor  (Vec3(0,-1,0),Vec3(0,1,0), Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
+    Plane ceiling(Vec3(0,1,0), Vec3(0,1,0), Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
+    Plane left   (Vec3(-1,0,0),Vec3(1,0,0), Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
+    Plane right  (Vec3(1,0,0), Vec3(1,0,0), Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
+    Plane back   (Vec3(0,0,-1),Vec3(0,0,1), Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),2);
+
+    std::vector<Plane*> planes;
+
+    planes.push_back(&floor);
+    //planes.push_back(&ceiling);
+    //planes.push_back(&left);
+    //planes.push_back(&right);
+    //planes.push_back(&back);
+
+    // SPHERES
+    // Sphere s(position,radius,ambient,diffuse,specular,alpha)
+    Sphere s1   (Vec3(0,0,0),1,   Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),5);
+    Sphere s2   (Vec3(2,2,1), 1,   Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),5);
+    Sphere s3   (Vec3(-2,-1,-1), 1,   Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),5);
+
     std::vector<Sphere*> spheres;
+
     spheres.push_back(&s1);
     spheres.push_back(&s2);
+    spheres.push_back(&s3);
 
     // DEFINE LIGHTING SOURCES
     // {position,ambient,diffuse,specular}
-    LightSource L(Vec3(5,5,2),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f));
+    LightSource L(Vec3(4,4,4),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f));
 
-    setup(cam,im,spheres,L);
+    setup(cam,im,planes,spheres,L);
 
     // INITIALIZE LOOP VARIABLES
     Ray pixel;
@@ -384,10 +475,10 @@ int main(int, char**){
             pixel.constructPrimary(im,row,col,cam);
             // get both the object and the distance
             std::tie(closestObject,distance) = objects.findFirstObject(pixel);
-            if (closestObject != nullptr)
-                im.image(row,col) = L.illuminate(closestObject,pixel,pixel.at(distance));
 
-
+            if (closestObject != nullptr) {
+                im.image(row,col) = L.illuminate(objects,closestObject,pixel,pixel.at(distance));
+            } // else the pixel stays black
         }
     }
 
