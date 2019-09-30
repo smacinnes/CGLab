@@ -345,7 +345,7 @@ public:
         std::tie(obj,interLength) = objs.findFirstObject(shadow);
         // if there is an object before the light, don't calculate Id or Is
         //if (false){
-        if (interLength > 0 && shadowLength >0 && interLength < shadowLength){
+        if (interLength < shadowLength){
             Id = Colour(0.0f, 0.0f, 0.0f);
             Is = Colour(0.0f, 0.0f, 0.0f);
         } else {
@@ -365,51 +365,25 @@ public:
 
 
 
-// sets up the camera and image plane
-// when moving objects in the scene, the x-direction is reversed from what
-// would be intuitive, except when moving the light sources, in which case
-// the x-axis is intuitive but the others are not. This function corrects
-// that behavior here so the user can define all objects intuitively
-void setup(Camera& cam, ImagePlane& im, std::vector<Plane*> &planes,
+// sets up the camera and image plane and optionally switched the x-axis
+// to be positive to the right if that is more intuitive
+void setup(Camera& cam, ImagePlane& im, bool swapXAxis,std::vector<Plane*> &planes,
            std::vector<Sphere*> &spheres, LightSource& L){
-    // x-left, y-up, x-out when this is uncommented
-    /*
-    cam.position    = mult(cam.position, Vec3(-1,1,1));
-    cam.lookingAt   = mult(cam.lookingAt,Vec3(-1,1,1));
-    L.position = mult(L.position,Vec3(-1,1,1));
-    for(auto it=planes.begin();it!=planes.end();++it){
-        (*it)->point = mult((*it)->point, Vec3(-1,1,1));
-        (*it)->norm = mult((*it)->norm, Vec3(-1,1,1));
+
+    if (swapXAxis) {
+        cam.position    = mult(cam.position, Vec3(-1,1,1));
+        cam.lookingAt   = mult(cam.lookingAt,Vec3(-1,1,1));
+        L.position = mult(L.position,Vec3(-1,1,1));
+        for(auto it=planes.begin();it!=planes.end();++it){
+            (*it)->point = mult((*it)->point, Vec3(-1,1,1));
+            (*it)->norm = mult((*it)->norm, Vec3(-1,1,1));
+        }
+        for(auto it=spheres.begin();it!=spheres.end();++it){
+            (*it)->center = mult((*it)->center, Vec3(-1,1,1));
+        }
     }
-    for(auto it=spheres.begin();it!=spheres.end();++it){
-        (*it)->center = mult((*it)->center, Vec3(-1,1,1));
-    }
-
-
-    //*/
-
     cam.setup();
     im.setup(cam);
-}
-
-// {point, normal, ambient, diffuse, specular, alpha}
-// normal can be any length and it will be normalized during construction
-std::vector<Plane*> createPlanes() {
-
-    //Plane ceiling(Vec3(0,1,0),Vec3(0,1,0),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
-    //Plane left(Vec3(-1,0,0),  Vec3(1,0,0),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
-    //Plane right(Vec3(1,0,0),  Vec3(1,0,0),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
-    //Plane back(Vec3(0,0,-1),  Vec3(0,0,1),Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),2);
-
-    std::vector<Plane*> planes;
-
-
-    //planes.push_back(&ceiling);
-    //planes.push_back(&left);
-    //planes.push_back(&right);
-    //planes.push_back(&back);
-
-    return planes;
 }
 
 int main(int, char**){
@@ -446,19 +420,20 @@ int main(int, char**){
     // Sphere s(position,radius,ambient,diffuse,specular,alpha)
     Sphere s1   (Vec3(0,0,0),1,   Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),5);
     Sphere s2   (Vec3(2,2,1), 1,   Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),5);
-    Sphere s3   (Vec3(-2,-1,-1), 1,   Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),5);
+    Sphere s3   (Vec3(-2,-.5f,-.5f), .5f,   Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),5);
 
     std::vector<Sphere*> spheres;
 
     spheres.push_back(&s1);
-    spheres.push_back(&s2);
+    //spheres.push_back(&s2);
     spheres.push_back(&s3);
 
     // DEFINE LIGHTING SOURCES
     // {position,ambient,diffuse,specular}
     LightSource L(Vec3(4,4,4),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f));
 
-    setup(cam,im,planes,spheres,L);
+    bool swapXAxis = true;
+    setup(cam,im,swapXAxis,planes,spheres,L);
 
     // INITIALIZE LOOP VARIABLES
     Ray pixel;
