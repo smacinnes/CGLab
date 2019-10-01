@@ -64,15 +64,13 @@ public:
 };
 
 // Class defining all properties of the image plane
-// For simplicity in contructing the environment, the dist from the image plane
-// to the camera is defined as 1.0
 class ImagePlane {
 private:
     // set these manually
     int wResolution = 640;      // default is 640
     int hResolution = 480;      // default is 480
-    float viewingAngle = 90.0f; // changing this causes strange behavior
-    float distToCam = 1.0f;     // all other dimensions based off this
+    float viewingAngle = 80.0f; // in degrees
+    float distToCam = 1.0f;
     // these are calculated automatically
     Vec3 center = Vec3(0,0,0);
     float hwRatio = float(hResolution)/wResolution;
@@ -85,7 +83,7 @@ public:
 
     void setup(const Camera& c){
         center = c.position+c.viewingDir*distToCam;
-        halfWidth = distToCam*tanf(viewingAngle/2.0f);
+        halfWidth = distToCam*tanf(viewingAngle*float(M_PI)/360.0f);
         llc = center - c.rightAxis*halfWidth - c.upAxis*halfWidth*hwRatio;
         pixRi = 2*halfWidth/(wResolution-1)*c.rightAxis;
         pixUp = 2*halfWidth*hwRatio/(hResolution-1)*c.upAxis;
@@ -402,19 +400,19 @@ int main(int, char**){
     // PLANES
     // Plane p(point, normal, ambient, diffuse, specular, alpha)
     // normal can be any length and it will be normalized during construction
-    Plane floor  (Vec3(0,-1,0),Vec3(0,1,0), Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
-    Plane ceiling(Vec3(0,1,0), Vec3(0,1,0), Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
-    Plane left   (Vec3(-1,0,0),Vec3(1,0,0), Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
-    Plane right  (Vec3(1,0,0), Vec3(1,0,0), Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
-    Plane back   (Vec3(0,0,-1),Vec3(0,0,1), Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),2);
+    Plane floor  (Vec3(0,-2,0),Vec3(0,1,0), Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
+    Plane ceiling(Vec3(0,2,0), Vec3(0,1,0), Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
+    Plane left   (Vec3(-2,0,0),Vec3(1,0,0), Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
+    Plane right  (Vec3(2,0,0), Vec3(1,0,0), Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
+    Plane back   (Vec3(0,0,-2),Vec3(0,0,1), Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),2);
 
     std::vector<Plane*> planes;
 
     planes.push_back(&floor);
-    //planes.push_back(&ceiling);
-    //planes.push_back(&left);
-    //planes.push_back(&right);
-    //planes.push_back(&back);
+    planes.push_back(&ceiling);
+    planes.push_back(&left);
+    planes.push_back(&right);
+    planes.push_back(&back);
 
     // SPHERES
     // Sphere s(position,radius,ambient,diffuse,specular,alpha)
@@ -430,7 +428,7 @@ int main(int, char**){
 
     // DEFINE LIGHTING SOURCES
     // {position,ambient,diffuse,specular}
-    LightSource L(Vec3(-4,4,4),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f));
+    LightSource L(Vec3(-1.9,1.9,1.9),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f));
 
     bool swapXAxis = true;
     setup(cam,im,swapXAxis,planes,spheres,L);
