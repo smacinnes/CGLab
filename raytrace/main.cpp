@@ -160,6 +160,59 @@ public:
     virtual ~Obj() {}
 };
 
+// define a triangle using 3 points
+class Triangle : public Obj {
+public:
+    Vec3 v1,v2,v3,edge1,edge2;
+private:
+    Vec3 h,s,q;
+    float a,f,u,v,t;
+public:
+    Triangle(Vec3 va,Vec3 vb,Vec3 vc,Vec3 a,Vec3 d,Vec3 s,float al) :
+        Obj(a,d,s,al),
+        v1(va),
+        v2(vb),
+        v3(vc) {
+        printf("Triangle: ");
+        printVec(v1);
+        printVec(v2);
+        printVec(v3);
+        edge1 = v2 - v1;
+        edge2 = v3 - v1;
+    }
+
+    /* returns the distance along the ray from the triangle to the
+     * ray's origin if there is a valid intersection and -1 otherwise
+     * "valid" meaning a single positive solution inside the triangle
+     * using the Moller-Trumbore algorithm
+     */
+    float intersects(const Ray& r){
+        h = r.dir.cross(edge2);
+        a = edge1.dot(h);
+        if (equal(a,0.0f,0.0001f)) return -1.0f; // parallel, infinite solutions
+
+        f = 1.0f/a;
+        s = r.orig - v1;
+        u = f*s.dot(h);
+        if (u < 0.0f || u > 1.0f) return -1.0f; // outside triangle
+
+        q = s.cross(edge1);
+        v = f*r.dir.dot(q);
+        if (v < 0.0f || u+v > 1.0f) return -1.0f; // outside triangle
+
+        t = f*edge2.dot(q);
+        if (t > 0.0f) return t;     // valid intersection
+        return -1.0f;               // triangle behind ray
+    }
+
+    // return normal
+    // which comes first? want normal to be facing the camera
+    Vec3 normal(const Vec3&) const {
+        return edge1.cross(edge2).normalized();
+    }
+
+};
+
 // defines an infinite plane (ex the floor)
 // use triangles (yet to be implemented) for walls
 class Plane : public Obj{
@@ -255,11 +308,14 @@ private:
     float minDist = std::numeric_limits<float>::max();
     float dist = -1.0f;
 public:
-    Objs(std::vector<Plane*> p,std::vector<Sphere*> s){
+    Objs(std::vector<Plane*> p,std::vector<Sphere*> s,std::vector<Triangle*> t){
         for(auto it=p.begin();it!=p.end();++it){
             objects.push_back(*it);
         }
         for(auto it=s.begin();it!=s.end();++it){
+            objects.push_back(*it);
+        }
+        for(auto it=t.begin();it!=t.end();++it){
             objects.push_back(*it);
         }
     }
@@ -366,7 +422,7 @@ public:
 // sets up the camera and image plane and optionally switched the x-axis
 // to be positive to the right if that is more intuitive
 void setup(Camera& cam, ImagePlane& im, bool swapXAxis,std::vector<Plane*> &planes,
-           std::vector<Sphere*> &spheres, LightSource& L){
+           std::vector<Sphere*> &spheres, std::vector<Triangle*> &triangles, LightSource& L){
 
     if (swapXAxis) {
         cam.position    = mult(cam.position, Vec3(-1,1,1));
@@ -378,6 +434,13 @@ void setup(Camera& cam, ImagePlane& im, bool swapXAxis,std::vector<Plane*> &plan
         }
         for(auto it=spheres.begin();it!=spheres.end();++it){
             (*it)->center = mult((*it)->center, Vec3(-1,1,1));
+        }
+        for(auto it=triangles.begin();it!=triangles.end();++it){
+            (*it)->v1 = mult((*it)->v1, Vec3(-1,1,1));
+            (*it)->v2 = mult((*it)->v2, Vec3(-1,1,1));
+            (*it)->v3 = mult((*it)->v3, Vec3(-1,1,1));
+            (*it)->edge1 = mult((*it)->edge1, Vec3(-1,1,1));
+            (*it)->edge2 = mult((*it)->edge2, Vec3(-1,1,1));
         }
     }
     cam.setup();
@@ -401,18 +464,18 @@ int main(int, char**){
     // Plane p(point, normal, ambient, diffuse, specular, alpha)
     // normal can be any length and it will be normalized during construction
     Plane floor  (Vec3(0,-2,0),Vec3(0,1,0), Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
-    Plane ceiling(Vec3(0,2,0), Vec3(0,1,0), Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
+    Plane ceiling(Vec3(0,2,0), Vec3(0,-1,0), Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
     Plane left   (Vec3(-2,0,0),Vec3(1,0,0), Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
-    Plane right  (Vec3(2,0,0), Vec3(1,0,0), Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
+    Plane right  (Vec3(2,0,0), Vec3(-1,0,0), Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
     Plane back   (Vec3(0,0,-2),Vec3(0,0,1), Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),2);
 
     std::vector<Plane*> planes;
 
-    planes.push_back(&floor);
-    planes.push_back(&ceiling);
-    planes.push_back(&left);
-    planes.push_back(&right);
-    planes.push_back(&back);
+    //planes.push_back(&floor);
+    //planes.push_back(&ceiling);
+    //planes.push_back(&left);
+    //planes.push_back(&right);
+    //planes.push_back(&back);
 
     // SPHERES
     // Sphere s(position,radius,ambient,diffuse,specular,alpha)
@@ -422,20 +485,31 @@ int main(int, char**){
 
     std::vector<Sphere*> spheres;
 
-    spheres.push_back(&s1);
+    //spheres.push_back(&s1);
     //spheres.push_back(&s2);
-    spheres.push_back(&s3);
+    //spheres.push_back(&s3);
+
+    // TRIANGLES
+    // Triangle t(v1, v2, v3, ambient, diffuse, specular, alpha)
+    // normal can be any length and it will be normalized during construction
+    Triangle t1(Vec3(0,-1,0),Vec3(1,1,0),Vec3(1,-1,0),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
+    Triangle t2(Vec3(-1,0,2),Vec3(-1,1,0),Vec3(-1,0,-2),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
+
+    std::vector<Triangle*> triangles;
+
+    triangles.push_back(&t1);
+    triangles.push_back(&t2);
 
     // DEFINE LIGHTING SOURCES
     // {position,ambient,diffuse,specular}
     LightSource L(Vec3(-1.9,1.9,1.9),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f));
 
     bool swapXAxis = true;
-    setup(cam,im,swapXAxis,planes,spheres,L);
+    setup(cam,im,swapXAxis,planes,spheres,triangles,L);
 
     // INITIALIZE LOOP VARIABLES
     Ray pixel;
-    Objs objects = Objs(planes,spheres);
+    Objs objects = Objs(planes,spheres,triangles);
     Obj* closestObject = nullptr;
     float distance = 0.0f;
 
