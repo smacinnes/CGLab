@@ -45,14 +45,13 @@ bool equal(float a, float b, float e){
 // vector from the tilt in radians)
 class Camera {
 public:
-    // set these three manually
-    Vec3 position =  Vec3(0,0,5);   // location of body of camera
-    Vec3 lookingAt = Vec3(0,0,4);   // where the camera is facing
-    Vec3 up = Vec3(0,1,0);          // tilt of camera: (0,1,0) is no tilt
-    // these will be set during setup() call
-    Vec3 viewingDir = Vec3(0,0,0);
-    Vec3 rightAxis = Vec3(0,0,0);
-    Vec3 upAxis = Vec3(0,0,0);
+    Vec3 position,lookingAt,up;        // up = (0,1,0) is no tilt
+    Vec3 viewingDir,rightAxis,upAxis;
+
+    Camera(const Vec3& pos,const Vec3& look,const Vec3& u) :
+        position(pos),
+        lookingAt(look),
+        up(u){}
 
     void setup(){
         viewingDir = (lookingAt - position).normalized();
@@ -72,29 +71,19 @@ private:
     float viewingAngle = 80.0f; // in degrees
     float distToCam = 1.0f;
     // these are calculated automatically
-    Vec3 center = Vec3(0,0,0);
-    float hwRatio = float(hResolution)/wResolution;
-    float halfWidth = 0.0f;
+    Vec3 center;
+    float hwRatio,halfWidth;
 public:
     Image<Colour> image = Image<Colour>(hResolution, wResolution);
-    Vec3 llc = Vec3(0,0,0);   // lower left corner
-    Vec3 pixRi = Vec3(0,0,0); // move one pixel to the right
-    Vec3 pixUp = Vec3(0,0,0); // move one pixel up
+    Vec3 llc,pixRi,pixUp;
 
     void setup(const Camera& c){
         center = c.position+c.viewingDir*distToCam;
+        hwRatio = float(hResolution)/wResolution;
         halfWidth = distToCam*tanf(viewingAngle*float(M_PI)/360.0f);
         llc = center - c.rightAxis*halfWidth - c.upAxis*halfWidth*hwRatio;
         pixRi = 2*halfWidth/(wResolution-1)*c.rightAxis;
         pixUp = 2*halfWidth*hwRatio/(hResolution-1)*c.upAxis;
-
-        printf("\nCorners of Image Plane are:\n");
-        printf("LLC: ");
-        printVec(llc);
-        printf("URC: ");
-        printVec(center+c.rightAxis*halfWidth+c.upAxis*halfWidth*hwRatio);
-        printf("Dist to Cam: %.1f\n",double(distToCam));
-        printf("View Angle: %.1f\n",double(viewingAngle));
     }
 };
 
@@ -102,9 +91,7 @@ public:
 // for purposes of overloading
 class Ray {
 public:
-    Vec3 orig = Vec3(0,0,0);
-    Vec3 dir = Vec3(0,0,0);
-public:
+    Vec3 orig,dir;
 
     // create a Ray between these two points
     // offset is distance along ray to move the start position
@@ -137,13 +124,13 @@ public:
 // have these material properties and methods for simple design
 class Obj {
 public:
-    Colour ka = Colour(0.0f, 0.0f, 0.0f);
-    Colour kd = Colour(0.0f, 0.0f, 0.0f);
-    Colour ks = Colour(0.0f, 0.0f, 0.0f);
-    float alpha = 0.0f;
+    Colour ka,kd,ks;
+    float alpha;
 
-    // can these be const references?
-    Obj(Vec3 a,Vec3 d,Vec3 s,float al) :
+    Obj(const Vec3& a,
+        const Vec3& d,
+        const Vec3& s,
+        float al) :
         ka(a),
         kd(d),
         ks(s),
@@ -163,22 +150,25 @@ public:
 // define a triangle using 3 points
 class Triangle : public Obj {
 public:
-    Vec3 v1,v2,v3,edge1,edge2;
+    Vec3 v1,v2,v3,edge1,edge2,norm;
 private:
     Vec3 h,s,q;
     float a,f,u,v,t;
 public:
-    Triangle(Vec3 va,Vec3 vb,Vec3 vc,Vec3 a,Vec3 d,Vec3 s,float al) :
+    Triangle(const Vec3& va,
+             const Vec3& vb,
+             const Vec3& vc,
+             const Vec3& a,
+             const Vec3& d,
+             const Vec3& s,
+             float al) :
         Obj(a,d,s,al),
         v1(va),
         v2(vb),
         v3(vc) {
-        printf("Triangle: ");
-        printVec(v1);
-        printVec(v2);
-        printVec(v3);
         edge1 = v2 - v1;
         edge2 = v3 - v1;
+        norm = edge1.cross(edge2).normalized();
     }
 
     /* returns the distance along the ray from the triangle to the
@@ -189,26 +179,22 @@ public:
     float intersects(const Ray& r){
         h = r.dir.cross(edge2);
         a = edge1.dot(h);
-        if (equal(a,0.0f,0.0001f)) return -1.0f; // parallel, infinite solutions
-
+        if (equal(a,0.0f,0.0001f)) return -1.0f;    // parallel
         f = 1.0f/a;
         s = r.orig - v1;
         u = f*s.dot(h);
-        if (u < 0.0f || u > 1.0f) return -1.0f; // outside triangle
-
+        if (u < 0.0f || u > 1.0f) return -1.0f;     // outside triangle
         q = s.cross(edge1);
         v = f*r.dir.dot(q);
-        if (v < 0.0f || u+v > 1.0f) return -1.0f; // outside triangle
-
+        if (v < 0.0f || u+v > 1.0f) return -1.0f;   // outside triangle
         t = f*edge2.dot(q);
-        if (t > 0.0f) return t;     // valid intersection
-        return -1.0f;               // triangle behind ray
+        if (t > 0.0f) return t;                     // valid intersection
+        return -1.0f;                               // triangle behind ray
     }
 
-    // return normal
-    // which comes first? want normal to be facing the camera
+    // return normal (need param for overloading)
     Vec3 normal(const Vec3&) const {
-        return edge1.cross(edge2).normalized();
+        return norm;
     }
 
 };
@@ -217,19 +203,19 @@ public:
 // use triangles (yet to be implemented) for walls
 class Plane : public Obj{
 public:
-    Vec3 point = Vec3(0,0,0);
-    Vec3 norm = Vec3(0,1,0);
+    Vec3 point,norm;
 private:
-    float temp = 0.0f;
+    float temp;
 public:
-    Plane(Vec3 p,Vec3 n,Vec3 a,Vec3 d,Vec3 s,float al) :
+    Plane(const Vec3& p,
+          const Vec3& n,
+          const Vec3& a,
+          const Vec3& d,
+          const Vec3& s,
+          float al) :
         Obj(a,d,s,al),
         point(p),
-        norm(n.normalized()){
-        printf("Plane: ");
-        printVec(point);
-        printVec(norm);
-    }
+        norm(n.normalized()){}
 
     /* returns the distance along the ray from the plane to the
      * ray's origin if there is a valid intersection and -1 otherwise
@@ -252,23 +238,21 @@ public:
 // defines a sphere via a point and a radius
 class Sphere : public Obj {
 public:
-    Vec3 center = Vec3(0,0,0);
-    float radius = 0.0f;
+    Vec3 center;
+    float radius;
 private:
-    Vec3 co = Vec3(0,0,0);      // center of sphere to origin of ray
-    float disc = 0.0f;
-    float t1 = 0.0f;
-    float t2 = 0.0f;
-    float b = 0.0f;
+    Vec3 co;      // center of sphere to origin of ray
+    float disc,t1,t2,b;
 public:
-    Sphere(Vec3 c,float r,Vec3 a,Vec3 d,Vec3 s,float al) :
+    Sphere(const Vec3& c,
+           float r,
+           const Vec3& a,
+           const Vec3& d,
+           const Vec3& s,
+           float al) :
         Obj(a,d,s,al),
         center(c),
-        radius(r){
-        printf("Sphere: ");
-        printVec(center);
-        printf("%.2f",double(radius));
-    }
+        radius(r){}
 
     /* returns the distance along the ray from the sphere to the
      * ray's origin if there is a valid intersection and -1 otherwise
@@ -298,17 +282,17 @@ public:
     }
 };
 
-// remember destructors or will have memory leak
 class Objs {
 public:
     std::vector<Obj*> objects;
 private:
-    // better way of doing this?
     Obj* closestObj = nullptr;
     float minDist = std::numeric_limits<float>::max();
     float dist = -1.0f;
 public:
-    Objs(std::vector<Plane*> p,std::vector<Sphere*> s,std::vector<Triangle*> t){
+    Objs(const std::vector<Plane*>& p,
+         const std::vector<Sphere*>& s,
+         const std::vector<Triangle*>& t){
         for(auto it=p.begin();it!=p.end();++it){
             objects.push_back(*it);
         }
@@ -348,32 +332,24 @@ public:
 };
 
 class LightSource {
-public: // properties
-    Vec3 position = Vec3(0,0,0);
-    Colour ambient = Colour(0.0f, 0.0f, 0.0f);
-    Colour diffuse = Colour(0.0f, 0.0f, 0.0f);
-    Colour specular = Colour(0.0f, 0.0f, 0.0f);
-private: // for calculations
-    Vec3 normal = Vec3(0,0,0);
-    Vec3 lightAngle = Vec3(0,0,0);
-    Vec3 R = Vec3(0,0,0);
-    Colour Ia = Colour(0.0f, 0.0f, 0.0f);
-    Colour Id = Colour(0.0f, 0.0f, 0.0f);
-    Colour Is = Colour(0.0f, 0.0f, 0.0f);
-    Ray shadow;
-    float shadowLength = 0.0f;
-    float interLength = 0.0f;
-    Obj* obj; // this is not used but must be there for findFirstObject()
 public:
-
-    LightSource (Vec3 pos, Colour a,Colour d,Colour s) {
-        position = pos;
-        ambient = a;
-        diffuse = d;
-        specular = s;
-        printf("Light Source: ");
-        printVec(position);
-    }
+    Vec3 position;
+    Colour ambient,diffuse,specular;
+private:
+    Vec3 normal,lightAngle,R;
+    Colour Ia,Id,Is;
+    Ray shadow;
+    Obj* obj;
+    float shadowLength,interLength;
+public:
+    LightSource (const Vec3& pos,
+                 const Colour& a,
+                 const Colour& d,
+                 const Colour& s) :
+        position(pos),
+        ambient(a),
+        diffuse(d),
+        specular(s){}
 
     // ensure all light levels fall in correct range
     void bindValues(){
@@ -388,7 +364,10 @@ public:
     // use Phong shading method
     // use shadow rays
     //
-    Colour illuminate(Objs objs,const Obj* o,const Ray& r,const Vec3& intersection){
+    Colour illuminate(Objs objs,
+                      const Obj* o,
+                      const Ray& r,
+                      const Vec3& intersection){
         // ambient light calculation
         Ia = mult(o->ka,ambient);
 
@@ -417,14 +396,19 @@ public:
     }
 };
 
-
-
 // sets up the camera and image plane and optionally switched the x-axis
 // to be positive to the right if that is more intuitive
-void setup(Camera& cam, ImagePlane& im, bool swapXAxis,std::vector<Plane*> &planes,
-           std::vector<Sphere*> &spheres, std::vector<Triangle*> &triangles, LightSource& L){
+void setup(Camera& cam,
+           ImagePlane& im,
+           bool posXright,
+           const std::vector<Plane*> &planes,
+           const std::vector<Sphere*> &spheres,
+           const std::vector<Triangle*> &triangles,
+           LightSource& L){
 
-    if (swapXAxis) {
+    // if the user prefers the x-axis positive to the right,
+    // mirror all coordinates
+    if (posXright) {
         cam.position    = mult(cam.position, Vec3(-1,1,1));
         cam.lookingAt   = mult(cam.lookingAt,Vec3(-1,1,1));
         L.position = mult(L.position,Vec3(-1,1,1));
@@ -443,6 +427,17 @@ void setup(Camera& cam, ImagePlane& im, bool swapXAxis,std::vector<Plane*> &plan
             (*it)->edge2 = mult((*it)->edge2, Vec3(-1,1,1));
         }
     }
+    // check the normal of planes and triangles against the camera
+    // if the normals don't face the camera, reverse them
+    for(auto it=planes.begin();it!=planes.end();++it){
+        if ((*it)->norm.dot(cam.position-(*it)->point) < 0.0f)
+            (*it)->norm *= -1.0f;
+    }
+    for(auto it=triangles.begin();it!=triangles.end();++it){
+        if ((*it)->norm.dot(cam.position-(*it)->v1) < 0.0f)
+
+            (*it)->norm *= -1.0f;
+    }
     cam.setup();
     im.setup(cam);
 }
@@ -451,11 +446,11 @@ int main(int, char**){
     // (+x: left +y: up +z: out of screen)
 
     // DEFINE CAMERA
-    // {position,lookingAt}
-    Camera cam = {Vec3(0,0,4),Vec3(0,0,0)};
+    // (position,lookingAt,upAxis)
+    Camera cam(Vec3(0,0,4),Vec3(0,0,0),Vec3(0,1,0));
 
     // DEFINE IMAGE PLANE
-    // default is 640x480 w/ 90 deg view angle
+    // default is 640x480 w/ 90 deg view angle - change up top
     ImagePlane im;
 
     // DEFINE OBJECTS IN SCENE
@@ -463,28 +458,67 @@ int main(int, char**){
     // PLANES
     // Plane p(point, normal, ambient, diffuse, specular, alpha)
     // normal can be any length and it will be normalized during construction
-    Plane floor  (Vec3(0,-2,0),Vec3(0,1,0), Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
-    Plane ceiling(Vec3(0,2,0), Vec3(0,-1,0), Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
-    Plane left   (Vec3(-2,0,0),Vec3(1,0,0), Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
-    Plane right  (Vec3(2,0,0), Vec3(-1,0,0), Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),Colour(.4f,.4f,.4f),2);
-    Plane back   (Vec3(0,0,-2),Vec3(0,0,1), Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),Colour(.2f,.2f,.7f),2);
+    // normal may be reversed to ensure correct lighting
+    Plane floor  (Vec3(0,-2,0),
+                  Vec3(0,-1,0),
+                  Colour(.9f,.9f,.9f),
+                  Colour(.9f,.9f,.9f),
+                  Colour(.9f,.9f,.9f),
+                  2);
+    Plane ceiling(Vec3(0,2,0),
+                  Vec3(0,1,0),
+                  Colour(.9f,.9f,.9f),
+                  Colour(.9f,.9f,.9f),
+                  Colour(.9f,.9f,.9f),
+                  2);
+    Plane left   (Vec3(-2,0,0),
+                  Vec3(-1,0,0),
+                  Colour(.4f,.4f,.4f),
+                  Colour(.4f,.4f,.4f),
+                  Colour(.4f,.4f,.4f),
+                  2);
+    Plane right  (Vec3(2,0,0),
+                  Vec3(1,0,0),
+                  Colour(.4f,.4f,.4f),
+                  Colour(.4f,.4f,.4f),
+                  Colour(.4f,.4f,.4f),
+                  2);
+    Plane back   (Vec3(0,0,-2),
+                  Vec3(0,0,-1),
+                  Colour(.2f,.2f,.7f),
+                  Colour(.2f,.2f,.7f),
+                  Colour(.2f,.2f,.7f),
+                  2);
 
     std::vector<Plane*> planes;
-
-    //planes.push_back(&floor);
-    //planes.push_back(&ceiling);
-    //planes.push_back(&left);
-    //planes.push_back(&right);
-    //planes.push_back(&back);
+    planes.push_back(&floor);
+    planes.push_back(&ceiling);
+    planes.push_back(&left);
+    planes.push_back(&right);
+    planes.push_back(&back);
 
     // SPHERES
     // Sphere s(position,radius,ambient,diffuse,specular,alpha)
-    Sphere s1   (Vec3(0,0,0),1,   Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),5);
-    Sphere s2   (Vec3(2,2,1), 1,   Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),Colour(.6f,.2f,.6f),5);
-    Sphere s3   (Vec3(-2,-.5f,-.5f), .5f,   Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),5);
+    Sphere s1   (Vec3(0,0,0),
+                 1,
+                 Colour(.6f,.2f,.6f),
+                 Colour(.6f,.2f,.6f),
+                 Colour(.6f,.2f,.6f),
+                 5);
+    Sphere s2   (Vec3(2,2,1),
+                 1,
+                 Colour(.6f,.2f,.6f),
+                 Colour(.6f,.2f,.6f),
+                 Colour(.6f,.2f,.6f),
+                 5);
+    Sphere s3   (Vec3(-2,-.5f,-.5f),
+                 .5f,
+                 Colour(.6f,.6f,.6f),
+                 Colour(.6f,.6f,.6f),
+                 Colour(.6f,.6f,.6f),
+                 5);
 
     std::vector<Sphere*> spheres;
-
     //spheres.push_back(&s1);
     //spheres.push_back(&s2);
     //spheres.push_back(&s3);
@@ -492,29 +526,40 @@ int main(int, char**){
     // TRIANGLES
     // Triangle t(v1, v2, v3, ambient, diffuse, specular, alpha)
     // normal can be any length and it will be normalized during construction
-    Triangle t1(Vec3(0,-1,0),Vec3(1,1,0),Vec3(1,-1,0),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
-    Triangle t2(Vec3(-1,0,2),Vec3(-1,1,0),Vec3(-1,0,-2),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),Colour(.9f,.9f,.9f),2);
+    Triangle t1(Vec3(0,-1,0),
+                Vec3(1,1,0),
+                Vec3(1,-1,0),
+                Colour(.9f,.9f,.9f),
+                Colour(.9f,.9f,.9f),
+                Colour(.9f,.9f,.9f),
+                2);
+    Triangle t2(Vec3(-2,0,-1),
+                Vec3(-1,1,-1),
+                Vec3(0,0,0),
+                Colour(.9f,.9f,.9f),
+                Colour(.9f,.9f,.9f),
+                Colour(.9f,.9f,.9f),
+                2);
 
     std::vector<Triangle*> triangles;
-
     triangles.push_back(&t1);
     triangles.push_back(&t2);
 
     // DEFINE LIGHTING SOURCES
     // {position,ambient,diffuse,specular}
-    LightSource L(Vec3(-1.9,1.9,1.9),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f),Colour(.6f,.6f,.6f));
+    LightSource L(Vec3(-1.9f,1.9f,1.9f),
+                  Colour(.6f,.6f,.6f),
+                  Colour(.6f,.6f,.6f),
+                  Colour(.6f,.6f,.6f));
 
-    bool swapXAxis = true;
-    setup(cam,im,swapXAxis,planes,spheres,triangles,L);
+    bool posXright = true;
+    setup(cam,im,posXright,planes,spheres,triangles,L);
 
     // INITIALIZE LOOP VARIABLES
     Ray pixel;
     Objs objects = Objs(planes,spheres,triangles);
     Obj* closestObject = nullptr;
     float distance = 0.0f;
-
-    // add test for image plane intersecting any objects?
-
 
     for (int row = 0; row < im.image.rows(); ++row) {
         for (int col = 0; col < im.image.cols(); ++col) {
