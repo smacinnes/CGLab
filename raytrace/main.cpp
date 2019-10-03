@@ -57,8 +57,6 @@ public:
         viewingDir = (lookingAt - position).normalized();
         rightAxis = (up.cross(viewingDir)).normalized();
         upAxis = viewingDir.cross(rightAxis); // will be unit vec
-        printf("Camera:");
-        printVec(position);
     }
 };
 
@@ -364,10 +362,11 @@ public:
     // use Phong shading method
     // use shadow rays
     //
-    Colour illuminate(Objs objs,
+    Colour illuminate(Objs& objs,
                       const Obj* o,
                       const Ray& r,
-                      const Vec3& intersection){
+                      const Vec3& intersection,
+                      int recursionDepth){
         // ambient light calculation
         Ia = mult(o->ka,ambient);
 
@@ -390,6 +389,9 @@ public:
             // specular light calculation
             R = 2*lightAngle.dot(normal)*normal-lightAngle;
             Is = mult(o->ks*pow(R.dot(-r.dir),o->alpha),specular);
+
+            // reflection calculations
+
         }
         bindValues();
         return (Ia + Id + Is);
@@ -485,9 +487,9 @@ int main(int, char**){
                   2);
     Plane back   (Vec3(0,0,-2),
                   Vec3(0,0,-1),
-                  Colour(.2f,.2f,.7f),
-                  Colour(.2f,.2f,.7f),
-                  Colour(.2f,.2f,.7f),
+                  Colour(.6f,.6f,.6f),
+                  Colour(.6f,.6f,.6f),
+                  Colour(.6f,.6f,.6f),
                   2);
 
     std::vector<Plane*> planes;
@@ -519,7 +521,7 @@ int main(int, char**){
                  5);
 
     std::vector<Sphere*> spheres;
-    //spheres.push_back(&s1);
+    spheres.push_back(&s1);
     //spheres.push_back(&s2);
     //spheres.push_back(&s3);
 
@@ -542,8 +544,8 @@ int main(int, char**){
                 2);
 
     std::vector<Triangle*> triangles;
-    triangles.push_back(&t1);
-    triangles.push_back(&t2);
+    //triangles.push_back(&t1);
+    //triangles.push_back(&t2);
 
     // DEFINE LIGHTING SOURCES
     // {position,ambient,diffuse,specular}
@@ -569,7 +571,7 @@ int main(int, char**){
             std::tie(closestObject,distance) = objects.findFirstObject(pixel);
 
             if (closestObject != nullptr) {
-                im.image(row,col) = L.illuminate(objects,closestObject,pixel,pixel.at(distance));
+                im.image(row,col) = L.illuminate(objects,closestObject,pixel,pixel.at(distance),1);
             } // else the pixel stays black
         }
     }
