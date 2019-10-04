@@ -12,6 +12,7 @@ class LightSource {
 public:
     Vec3 position;
     Colour ambient,diffuse,specular;
+    int maxDepth;
 private:
     Vec3 normal,lightAngle,R;
     Colour Ia,Id,Is;
@@ -19,7 +20,7 @@ private:
     Obj* obj;
     float shadowLength,interLength;
 public:
-    LightSource (const Vec3&,const Colour&,const Colour&,const Colour&);
+    LightSource (const Vec3&,const Colour&,const Colour&,const Colour&,int);
 
     // bind a single pixel value in range [0.0f,1.0f]
     void bindPixel(float&);

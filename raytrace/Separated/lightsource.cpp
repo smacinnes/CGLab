@@ -3,11 +3,13 @@
 LightSource::LightSource(const Vec3& pos,
                          const Colour& a,
                          const Colour& d,
-                         const Colour& s) :
+                         const Colour& s,
+                         int depth) :
     position(pos),
     ambient(a),
     diffuse(d),
-    specular(s){}
+    specular(s),
+    maxDepth(depth){}
 
 // bind a single pixel value in range [0.0f,1.0f]
 void LightSource::bindPixel(float& value){
@@ -63,6 +65,9 @@ Colour LightSource::illuminate(Objs& objs,
         Is = mult(o->ks*pow(R.dot(-r.dir),o->alpha),specular);
 
         // reflection calculations
+        if (recursionDepth < maxDepth) {
+
+        }
 
     }
     bindValues();
