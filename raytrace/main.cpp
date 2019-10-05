@@ -10,16 +10,8 @@ Colour blue()   { return Colour(0.0f, 0.0f, 1.0f); }
 Colour white()  { return Colour(1.0f, 1.0f, 1.0f); }
 Colour black()  { return Colour(0.0f, 0.0f, 0.0f); }
 
-// bind a single pixel value in range [0.0f,1.0f]
-float bindPixel(float value){
-    if (value <= 0)    return 0.0f;
-    if (value >= 1.0f) return 1.0f;
-    return value;
-}
-// bind a all pixel values in range [0.0f,1.0f]
-Vec3 bindPixelValues(const Vec3& v){
-    return Vec3(bindPixel(v(0)),bindPixel(v(1)),bindPixel(v(2)));
-}
+const float TOLERANCE = 0.001f;
+
 // multiply two vectors elementwise (useful for colours)
 Vec3 mult(const Vec3& v1,const Vec3& v2){
     return Vec3(v1(0)*v2(0),v1(1)*v2(1),v1(2)*v2(2));
@@ -100,6 +92,13 @@ public:
         orig = from+offset*dir;
         return (to-orig).norm();
     }
+    // create a Ray with an offset
+    // offset is distance along ray to move the start position
+    // to avoid self intersection
+    void createWith(const Vec3& o, const Vec3& d, float offset){
+        dir = d;
+        orig = o+offset*dir;
+    }
     // intersect image plane at specified pixel
     void constructPrimary(const ImagePlane& im,int row,int col,const Camera& cam){
         // this way makes the ray start at the image plane
@@ -120,19 +119,26 @@ public:
 
 // All objects in the scene will derive from this class and
 // have these material properties and methods for simple design
+// if ksh < 0, object is not shiny at all
 class Obj {
 public:
-    Colour ka,kd,ks;
+    Colour ka,kd,ks,ksh;
     float alpha;
+    bool isShiny;
 
     Obj(const Vec3& a,
         const Vec3& d,
         const Vec3& s,
+        const Vec3& sh,
         float al) :
         ka(a),
         kd(d),
         ks(s),
-        alpha(al) {}
+        ksh(sh),
+        alpha(al){
+        // if object reflects any light
+        isShiny = sh(0) > 0 || sh(1) > 0 || sh(2) > 0;
+    }
 
     // returns the dist to the valid intersection if there is one, -1 otherwise
     // ray is o+td, this returns t or -1
@@ -159,8 +165,9 @@ public:
              const Vec3& a,
              const Vec3& d,
              const Vec3& s,
+             const Vec3& sh,
              float al) :
-        Obj(a,d,s,al),
+        Obj(a,d,s,sh,al),
         v1(va),
         v2(vb),
         v3(vc) {
@@ -177,7 +184,7 @@ public:
     float intersects(const Ray& r){
         h = r.dir.cross(edge2);
         a = edge1.dot(h);
-        if (equal(a,0.0f,0.0001f)) return -1.0f;    // parallel
+        if (equal(a,0.0f,TOLERANCE)) return -1.0f;    // parallel
         f = 1.0f/a;
         s = r.orig - v1;
         u = f*s.dot(h);
@@ -210,8 +217,9 @@ public:
           const Vec3& a,
           const Vec3& d,
           const Vec3& s,
+          const Vec3& sh,
           float al) :
-        Obj(a,d,s,al),
+        Obj(a,d,s,sh,al),
         point(p),
         norm(n.normalized()){}
 
@@ -221,7 +229,7 @@ public:
      */
     float intersects(const Ray& r){
         temp = norm.dot(r.dir);                     // hold dot prod op
-        if(equal(temp,0.0f,0.0001f)) return -1.0f;  // if dot~=0
+        if(equal(temp,0.0f,TOLERANCE)) return -1.0f;  // if dot~=0
         temp = (point-r.orig).dot(norm)/temp;       // hold scalar solution
         if (temp > 0) return temp;                  // ensure (+) solution
         return -1.0f;
@@ -247,8 +255,9 @@ public:
            const Vec3& a,
            const Vec3& d,
            const Vec3& s,
+           const Vec3& sh,
            float al) :
-        Obj(a,d,s,al),
+        Obj(a,d,s,sh,al),
         center(c),
         radius(r){}
 
@@ -267,10 +276,10 @@ public:
         b = -(r.dir.dot(co));
         t1 = b+sqrt(disc);
         t2 = b-sqrt(disc);
-        if (t1 < 0) return -1.0f;       // ray starts after sphere
+        if (t1 < 0.0f) return -1.0f;       // ray starts after sphere
         // to avoid cross sections, change the previous line to read "t2" and
         // comment out the following line
-        if (t2 < 0) return t1;
+        if (t2 < 0.0f) return t1;
         return t2;
     }
 
@@ -325,6 +334,7 @@ public:
             }
         }
         // closestObj will still be nullptr if the ray didn't hit anything
+        // minDist will still be maximim float distance
         return std::make_tuple(closestObj,minDist);
     }
 };
@@ -333,29 +343,36 @@ class LightSource {
 public:
     Vec3 position;
     Colour ambient,diffuse,specular;
+    int maxDepth;
 private:
-    Vec3 normal,lightAngle,R;
-    Colour Ia,Id,Is;
-    Ray shadow;
-    Obj* obj;
-    float shadowLength,interLength;
+    Vec3 normal,lightAngle,R,intersection;
+    Colour background,pixelColour;
+    Ray shadow,reflect;
+    Obj *obj,*Sobj;
+    float distToLight,interLength;
 public:
     LightSource (const Vec3& pos,
                  const Colour& a,
                  const Colour& d,
-                 const Colour& s) :
+                 const Colour& s,
+                 int depth) :
         position(pos),
         ambient(a),
         diffuse(d),
-        specular(s){}
+        specular(s),
+        maxDepth(depth){
+        background = Colour(0.0f,0.0f,0.0f); // if doesn't hit anything
+    }
 
-    // ensure all light levels fall in correct range
-    void bindValues(){
-        Ia = bindPixelValues(Ia);
-        // if diffuse <= 0, specular must be 0
-        for(int i=0;i<3;i++){ if(Id(i)<0.0f){ Is(i)=0.0f;}}
-        Id = bindPixelValues(Id);
-        Is = bindPixelValues(Is);
+    // bind a single pixel value in range [0.0f,1.0f]
+    float bindPixel(float value){
+        if (value <= 0.0f) return 0.0f;
+        if (value >= 1.0f) return 1.0f;
+        return value;
+    }
+    // bind a all pixel values in range [0.0f,1.0f]
+    Vec3 bindVec(Vec3 v){
+        return Vec3(bindPixel(v(0)),bindPixel(v(1)),bindPixel(v(2)));
     }
 
     // determine the colour of a particular pixel
@@ -363,38 +380,53 @@ public:
     // use shadow rays
     //
     Colour illuminate(Objs& objs,
-                      const Obj* o,
                       const Ray& r,
-                      const Vec3& intersection,
                       int recursionDepth){
-        // ambient light calculation
-        Ia = mult(o->ka,ambient);
 
-        // create ray from intersection to light source
-        // and store the distance between those points
-        shadowLength = shadow.createBetween(intersection,position,0.01f);
-        // check for objects along the shadow ray
-        std::tie(obj,interLength) = objs.findFirstObject(shadow);
-        // if there is an object before the light, don't calculate Id or Is
-        //if (false){
-        if (interLength < shadowLength){
-            Id = Colour(0.0f, 0.0f, 0.0f);
-            Is = Colour(0.0f, 0.0f, 0.0f);
-        } else {
-            // diffused light calculation
-            normal = o->normal(intersection);
-            lightAngle = (position-intersection).normalized();
-            Id = mult(lightAngle.dot(normal)*o->kd,diffuse);
+        // if it doesn't hit anything, this will be the colour
+        if (recursionDepth == 0) pixelColour = background;
 
-            // specular light calculation
-            R = 2*lightAngle.dot(normal)*normal-lightAngle;
-            Is = mult(o->ks*pow(R.dot(-r.dir),o->alpha),specular);
+        // determine if ray intersects anything
+        std::tie(obj,interLength) = objs.findFirstObject(r);
+
+        // if it hit something
+        if (interLength > 0) {
+
+            // calculate intersection and normal at point
+            intersection = r.at(interLength);
+            normal = obj->normal(intersection);
+
+            // ambient light calculation
+            pixelColour += bindVec(mult(obj->ka,ambient));
+
+            // check if it's in a shadow
+            // return the dist to the light source along the ray
+            distToLight = shadow.createBetween(intersection,position,TOLERANCE);
+            std::tie(Sobj,interLength) = objs.findFirstObject(shadow);
+
+            // only calculate diffuse + specular if not in shadow
+            if (interLength > distToLight){
+                // diffused light calculation
+                lightAngle = (position-intersection).normalized();
+                pixelColour += bindVec(mult(lightAngle.dot(normal)*obj->kd,diffuse));
+
+                // specular light calculation
+                R = 2*lightAngle.dot(normal)*normal-lightAngle;
+                pixelColour += bindVec(mult(obj->ks*pow(R.dot(-r.dir),obj->alpha),specular));
+            }
 
             // reflection calculations
-
+            if (recursionDepth < maxDepth) {
+                if (obj->isShiny) {
+                    // create a reflection of the view vector
+                    reflect.createWith(intersection,2*(-r.dir).dot(normal)*normal+r.dir,.1f);
+                    //printVec(pixelColour);
+                    pixelColour += bindVec(mult(obj->ksh,illuminate(objs,reflect,recursionDepth+1)));
+                    //printVec(pixelColour);
+                }
+            }
         }
-        bindValues();
-        return (Ia + Id + Is);
+        return bindVec(pixelColour);
     }
 };
 
@@ -458,38 +490,49 @@ int main(int, char**){
     // DEFINE OBJECTS IN SCENE
 
     // PLANES
-    // Plane p(point, normal, ambient, diffuse, specular, alpha)
     // normal can be any length and it will be normalized during construction
     // normal may be reversed to ensure correct lighting
-    Plane floor  (Vec3(0,-2,0),
-                  Vec3(0,-1,0),
-                  Colour(.9f,.9f,.9f),
-                  Colour(.9f,.9f,.9f),
-                  Colour(.9f,.9f,.9f),
-                  2);
+    Plane floor  (Vec3(0,-2,0),         // point
+                  Vec3(0,-1,0),         // normal
+                  Colour(.9f,.9f,.9f),  // ambient
+                  Colour(.9f,.9f,.9f),  // diffuse
+                  Colour(.9f,.9f,.9f),  // specular
+                  Colour(-1,-1,-1),     // reflection
+                  2);                   // alpha (for specular
     Plane ceiling(Vec3(0,2,0),
                   Vec3(0,1,0),
                   Colour(.9f,.9f,.9f),
                   Colour(.9f,.9f,.9f),
                   Colour(.9f,.9f,.9f),
+                  Colour(-1,-1,-1),
                   2);
     Plane left   (Vec3(-2,0,0),
                   Vec3(-1,0,0),
-                  Colour(.4f,.4f,.4f),
-                  Colour(.4f,.4f,.4f),
-                  Colour(.4f,.4f,.4f),
+                  Colour(.6f,.2f,.2f),
+                  Colour(.6f,.2f,.2f),
+                  Colour(.6f,.2f,.2f),
+                  Colour(-1,-1,-1),
                   2);
     Plane right  (Vec3(2,0,0),
                   Vec3(1,0,0),
-                  Colour(.4f,.4f,.4f),
-                  Colour(.4f,.4f,.4f),
-                  Colour(.4f,.4f,.4f),
+                  Colour(.2f,.6f,.2f),
+                  Colour(.2f,.6f,.2f),
+                  Colour(.2f,.6f,.2f),
+                  Colour(-1,-1,-1),
                   2);
     Plane back   (Vec3(0,0,-2),
                   Vec3(0,0,-1),
                   Colour(.6f,.6f,.6f),
                   Colour(.6f,.6f,.6f),
                   Colour(.6f,.6f,.6f),
+                  Colour(-1,-1,-1),
+                  2);
+    Plane front   (Vec3(0,0,4.5f),
+                  Vec3(0,0,-1),
+                  Colour(.6f,.6f,.6f),
+                  Colour(.6f,.6f,.6f),
+                  Colour(.6f,.6f,.6f),
+                  Colour(-1,-1,-1),
                   2);
 
     std::vector<Plane*> planes;
@@ -498,6 +541,7 @@ int main(int, char**){
     planes.push_back(&left);
     planes.push_back(&right);
     planes.push_back(&back);
+    planes.push_back(&front);
 
     // SPHERES
     // Sphere s(position,radius,ambient,diffuse,specular,alpha)
@@ -506,24 +550,27 @@ int main(int, char**){
                  Colour(.6f,.2f,.6f),
                  Colour(.6f,.2f,.6f),
                  Colour(.6f,.2f,.6f),
+                 Colour(1,1,1),
                  5);
     Sphere s2   (Vec3(2,2,1),
                  1,
                  Colour(.6f,.2f,.6f),
                  Colour(.6f,.2f,.6f),
                  Colour(.6f,.2f,.6f),
+                 Colour(-1,-1,-1),
                  5);
-    Sphere s3   (Vec3(-2,-.5f,-.5f),
+    Sphere s3   (Vec3(-1.5f,-.5f,.5f),
                  .5f,
-                 Colour(.6f,.6f,.6f),
-                 Colour(.6f,.6f,.6f),
-                 Colour(.6f,.6f,.6f),
+                 Colour(.1f,.1f,.6f),
+                 Colour(.1f,.1f,.6f),
+                 Colour(.1f,.1f,.6f),
+                 Colour(.5,.5,.5),
                  5);
 
     std::vector<Sphere*> spheres;
     spheres.push_back(&s1);
     //spheres.push_back(&s2);
-    //spheres.push_back(&s3);
+    spheres.push_back(&s3);
 
     // TRIANGLES
     // Triangle t(v1, v2, v3, ambient, diffuse, specular, alpha)
@@ -534,6 +581,7 @@ int main(int, char**){
                 Colour(.9f,.9f,.9f),
                 Colour(.9f,.9f,.9f),
                 Colour(.9f,.9f,.9f),
+                Colour(-1,-1,-1),
                 2);
     Triangle t2(Vec3(-2,0,-1),
                 Vec3(-1,1,-1),
@@ -541,6 +589,7 @@ int main(int, char**){
                 Colour(.9f,.9f,.9f),
                 Colour(.9f,.9f,.9f),
                 Colour(.9f,.9f,.9f),
+                Colour(-1,-1,-1),
                 2);
 
     std::vector<Triangle*> triangles;
@@ -549,10 +598,11 @@ int main(int, char**){
 
     // DEFINE LIGHTING SOURCES
     // {position,ambient,diffuse,specular}
-    LightSource L(Vec3(-1.9f,1.9f,1.9f),
+    LightSource L(Vec3(0,1.9f,-1),
                   Colour(.6f,.6f,.6f),
                   Colour(.6f,.6f,.6f),
-                  Colour(.6f,.6f,.6f));
+                  Colour(.4f,.4f,.4f),
+                  4);
 
     bool posXright = true;
     setup(cam,im,posXright,planes,spheres,triangles,L);
@@ -560,19 +610,13 @@ int main(int, char**){
     // INITIALIZE LOOP VARIABLES
     Ray pixel;
     Objs objects = Objs(planes,spheres,triangles);
-    Obj* closestObject = nullptr;
-    float distance = 0.0f;
 
     for (int row = 0; row < im.image.rows(); ++row) {
         for (int col = 0; col < im.image.cols(); ++col) {
 
             pixel.constructPrimary(im,row,col,cam);
-            // get both the object and the distance
-            std::tie(closestObject,distance) = objects.findFirstObject(pixel);
 
-            if (closestObject != nullptr) {
-                im.image(row,col) = L.illuminate(objects,closestObject,pixel,pixel.at(distance),1);
-            } // else the pixel stays black
+            im.image(row,col) = L.illuminate(objects,pixel,0);
         }
     }
 
