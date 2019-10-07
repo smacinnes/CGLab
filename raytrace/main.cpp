@@ -58,7 +58,7 @@ private:
     // set these manually
     int wResolution = 640;      // default is 640
     int hResolution = 480;      // default is 480
-    float viewingAngle = 80.0f; // in degrees
+    float viewingAngle = 80.0f; // in degrees - 80 appears natural
     float distToCam = 1.0f;
     // these are calculated automatically
     Vec3 center;
@@ -66,6 +66,12 @@ private:
 public:
     Image<Colour> image = Image<Colour>(hResolution, wResolution);
     Vec3 llc,pixRi,pixUp;
+
+    ImagePlane(int wRes,int hRes,float viewAng,float camDist) :
+        wResolution(wRes),
+        hResolution(hRes),
+        viewingAngle(viewAng),
+        distToCam(camDist){}
 
     void setup(const Camera& c){
         center = c.position+c.viewingDir*distToCam;
@@ -136,7 +142,7 @@ public:
         ks(s),
         ksh(sh),
         alpha(al){
-        // if object reflects any light
+        // if object reflects any light - save calculation time
         isShiny = sh(0) > 0 || sh(1) > 0 || sh(2) > 0;
     }
 
@@ -419,7 +425,7 @@ public:
             if (recursionDepth < maxDepth) {
                 if (obj->isShiny) {
                     // create a reflection of the view vector
-                    reflect.createWith(intersection,2*(-r.dir).dot(normal)*normal+r.dir,.1f);
+                    reflect.createWith(intersection,2*(-r.dir).dot(normal)*normal+r.dir,TOLERANCE);
                     //printVec(pixelColour);
                     pixelColour += bindVec(mult(obj->ksh,illuminate(objs,reflect,recursionDepth+1)));
                     //printVec(pixelColour);
@@ -477,15 +483,15 @@ void setup(Camera& cam,
 }
 
 int main(int, char**){
-    // (+x: left +y: up +z: out of screen)
+    // default positive axes are (x-left, y-up, z-out of screen)
+    // set the following to true to swap the x-axis
+    bool posXright = true;
 
     // DEFINE CAMERA
     // (position,lookingAt,upAxis)
-    Camera cam(Vec3(0,0,4),Vec3(0,0,0),Vec3(0,1,0));
-
-    // DEFINE IMAGE PLANE
-    // default is 640x480 w/ 90 deg view angle - change up top
-    ImagePlane im;
+    Camera cam(Vec3(1.5,0,4),Vec3(0,0,0),Vec3(0,1,0));
+    // (width,height,view angle(deg),dist from camera)
+    ImagePlane im(640,480,80,1);
 
     // DEFINE OBJECTS IN SCENE
 
@@ -604,7 +610,6 @@ int main(int, char**){
                   Colour(.4f,.4f,.4f),
                   4);
 
-    bool posXright = true;
     setup(cam,im,posXright,planes,spheres,triangles,L);
 
     // INITIALIZE LOOP VARIABLES
