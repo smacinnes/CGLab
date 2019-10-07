@@ -1,3 +1,12 @@
+/*
+ * Seamus MacInnes
+ * A00415673
+ * CSCI 4471 Computer Graphics
+ * Assignment 1: Ray Tracing
+ * Oct 8th 2019
+ */
+
+
 #include "OpenGP/Image/Image.h"
 #include "bmpwrite.h"
 
@@ -10,34 +19,32 @@ Colour blue()   { return Colour(0.0f, 0.0f, 1.0f); }
 Colour white()  { return Colour(1.0f, 1.0f, 1.0f); }
 Colour black()  { return Colour(0.0f, 0.0f, 0.0f); }
 
+// Accepted tolerance for floating point numbers
+// used for ray offsets and zero dot products
 const float TOLERANCE = 0.001f;
 
 // multiply two vectors elementwise (useful for colours)
 Vec3 mult(const Vec3& v1,const Vec3& v2){
     return Vec3(v1(0)*v2(0),v1(1)*v2(1),v1(2)*v2(2));
 }
-// print a vector
-void printVec(const Vec3& v){
-    printf("%.3f  %.3f  %.3f\n",double(v(0)),double(v(1)),double(v(2)));
-}
 // if two floats are close enough
 bool equal(float a, float b, float e){
     return std::abs(a-b) <= e;
 }
-/*
+
+/*  EXPLANATION OF COORDINATE SYSTEM
  *  The point (0,0,0) will be an absolute position in space and is not defined
- *  relative to the camera, image plane or anything else in the scene. The
- *  distance from the camera to the image plane is defined as 1.0 (but this
- *  can be changed under ImagePlane) and all other dimensions will be scaled
- *  off of that distance.
+ *  relative to the camera, image plane or anything else. The distance from
+ *  the camera to the image plane is defined as 1.0 for simplicity (but this
+ *  can be changed in the ImagePlane constructor).
  */
 
-// Class defining the position and orientation of the camera
-// TODO: add easier adjustment of tilting function (ex auto calculate up
-// vector from the tilt in radians)
+// Class containing all information about the camera
 class Camera {
 public:
+    // set these
     Vec3 position,lookingAt,up;        // up = (0,1,0) is no tilt
+    // calculated automatically
     Vec3 viewingDir,rightAxis,upAxis;
 
     Camera(const Vec3& pos,const Vec3& look,const Vec3& u) :
@@ -53,6 +60,7 @@ public:
 };
 
 // Class defining all properties of the image plane
+// Image plane is defined relative to the camera
 class ImagePlane {
 private:
     // set these manually
@@ -83,8 +91,6 @@ public:
     }
 };
 
-// the intersect() and related methods are stored in the object class definition
-// for purposes of overloading
 class Ray {
 public:
     Vec3 orig,dir;
@@ -107,12 +113,6 @@ public:
     }
     // intersect image plane at specified pixel
     void constructPrimary(const ImagePlane& im,int row,int col,const Camera& cam){
-        // this way makes the ray start at the image plane
-        // good for cross sections, bad for realism
-        /* orig = im.llc + im.pixRi*float(col-1) + im.pixUp*float(row-1);
-         * dir = (orig - cam.position).normalized(); */
-        // this way makes the ray start at the camera
-        // good for realism, cant do cross sections
         orig = cam.position;
         dir = (im.llc+im.pixRi*float(col-1)+im.pixUp*float(row-1)
                -cam.position).normalized();
@@ -550,8 +550,8 @@ int main(int, char**){
     planes.push_back(&front);
 
     // SPHERES
-    // Sphere s(position,radius,ambient,diffuse,specular,alpha)
-    Sphere s1   (Vec3(0,0,0),
+    // Sphere s(position,radius,ambient,diffuse,specular,reflects,alpha)
+    Sphere s1   (Vec3(0.5f,0,0),
                  1,
                  Colour(.6f,.2f,.6f),
                  Colour(.6f,.2f,.6f),
@@ -565,7 +565,7 @@ int main(int, char**){
                  Colour(.6f,.2f,.6f),
                  Colour(-1,-1,-1),
                  5);
-    Sphere s3   (Vec3(-1.5f,-.5f,.5f),
+    Sphere s3   (Vec3(-1.5f,-.5f,1),
                  .5f,
                  Colour(.1f,.1f,.6f),
                  Colour(.1f,.1f,.6f),
@@ -579,8 +579,7 @@ int main(int, char**){
     spheres.push_back(&s3);
 
     // TRIANGLES
-    // Triangle t(v1, v2, v3, ambient, diffuse, specular, alpha)
-    // normal can be any length and it will be normalized during construction
+    // Triangle t(v1,v2,v3,ambient,diffuse,specular,reflects,alpha)
     Triangle t1(Vec3(0,-1,0),
                 Vec3(1,1,0),
                 Vec3(1,-1,0),
@@ -602,20 +601,22 @@ int main(int, char**){
     //triangles.push_back(&t1);
     //triangles.push_back(&t2);
 
-    // DEFINE LIGHTING SOURCES
-    // {position,ambient,diffuse,specular}
-    LightSource L(Vec3(0,1.9f,-1),
+    // DEFINE LIGHTING SOURCE
+    // (position,ambient,diffuse,specular,recursion depth)
+    LightSource L(Vec3(0,1.9f,-.5),
                   Colour(.6f,.6f,.6f),
                   Colour(.6f,.6f,.6f),
                   Colour(.4f,.4f,.4f),
                   4);
 
+    // optionally mirror axis, verify normals
     setup(cam,im,posXright,planes,spheres,triangles,L);
 
     // INITIALIZE LOOP VARIABLES
     Ray pixel;
     Objs objects = Objs(planes,spheres,triangles);
 
+    // ILLUMINATE ALL PIXELS
     for (int row = 0; row < im.image.rows(); ++row) {
         for (int col = 0; col < im.image.cols(); ++col) {
 
@@ -625,6 +626,7 @@ int main(int, char**){
         }
     }
 
+    // display and save the image
     bmpwrite("../../out.bmp", im.image);
     imshow(im.image);
 
