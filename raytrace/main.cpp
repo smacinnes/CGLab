@@ -6,7 +6,6 @@
  * Oct 8th 2019
  */
 
-
 #include "OpenGP/Image/Image.h"
 #include "bmpwrite.h"
 
@@ -50,12 +49,11 @@ public:
     Camera(const Vec3& pos,const Vec3& look,const Vec3& u) :
         position(pos),
         lookingAt(look),
-        up(u){}
-
-    void setup(){
+        up(u)
+    {   // calculate camera coordinate frame
         viewingDir = (lookingAt - position).normalized();
-        rightAxis = (up.cross(viewingDir)).normalized();
-        upAxis = viewingDir.cross(rightAxis); // will be unit vec
+        rightAxis = (viewingDir.cross(up)).normalized();
+        upAxis = rightAxis.cross(viewingDir); // will be unit vec
     }
 };
 
@@ -75,13 +73,12 @@ public:
     Image<Colour> image = Image<Colour>(hResolution, wResolution);
     Vec3 llc,pixRi,pixUp;
 
-    ImagePlane(int wRes,int hRes,float viewAng,float camDist) :
+    ImagePlane(int wRes,int hRes,float viewAng,float camDist,const Camera& c) :
         wResolution(wRes),
         hResolution(hRes),
         viewingAngle(viewAng),
-        distToCam(camDist){}
-
-    void setup(const Camera& c){
+        distToCam(camDist)
+    {   // calculate plane location, orientation and boundaries
         center = c.position+c.viewingDir*distToCam;
         hwRatio = float(hResolution)/wResolution;
         halfWidth = distToCam*tanf(viewingAngle*float(M_PI)/360.0f);
@@ -95,37 +92,34 @@ class Ray {
 public:
     Vec3 orig,dir;
 
-    // create a Ray between these two points
-    // offset is distance along ray to move the start position
-    // to avoid self intersection
-    // return the distance between the points
+    /* create a Ray between these two points
+     * offset is distance along ray to move
+     * the start positionto avoid self intersection
+     * returns the distance between the points */
     float createBetween(const Vec3& from, const Vec3& to, float offset){
         dir = (to-from).normalized();
         orig = from+offset*dir;
         return (to-orig).norm();
     }
-    // create a Ray with an offset
-    // offset is distance along ray to move the start position
-    // to avoid self intersection
+    // create a Ray from origin and direction with an offset
     void createWith(const Vec3& o, const Vec3& d, float offset){
-        dir = d;
+        dir = d.normalized();
         orig = o+offset*dir;
     }
-    // intersect image plane at specified pixel
+    // create Ray intersecting ImagePlane at specified pixel
     void constructPrimary(const ImagePlane& im,int row,int col,const Camera& cam){
         orig = cam.position;
         dir = (im.llc+im.pixRi*float(col-1)+im.pixUp*float(row-1)
                -cam.position).normalized();
     }
-    // ray location with given parameter
+    // return Ray location at given distance x=o+t*d
     Vec3 at(float t) const {
         return orig+t*dir;
     }
 };
 
 // All objects in the scene will derive from this class and
-// have these material properties and methods for simple design
-// if ksh < 0, object is not shiny at all
+// have these material properties and methods
 class Obj {
 public:
     Colour ka,kd,ks,ksh;
@@ -142,18 +136,17 @@ public:
         ks(s),
         ksh(sh),
         alpha(al){
-        // if object reflects any light - save calculation time
+        // if object reflects any light - saves calculation time
         isShiny = sh(0) > 0 || sh(1) > 0 || sh(2) > 0;
     }
 
-    // returns the dist to the valid intersection if there is one, -1 otherwise
-    // ray is o+td, this returns t or -1
+    // returns distance to valid intersection if one exists, -1 otherwise
     virtual float intersects(const Ray&) = 0;
 
     // returns the normal at the specified point
     virtual Vec3 normal(const Vec3&) const = 0;
 
-    // virtual destructor - compiler complains without it
+    // compiler complains without virtual destructor
     virtual ~Obj() {}
 };
 
@@ -176,7 +169,8 @@ public:
         Obj(a,d,s,sh,al),
         v1(va),
         v2(vb),
-        v3(vc) {
+        v3(vc)
+    {
         edge1 = v2 - v1;
         edge2 = v3 - v1;
         norm = edge1.cross(edge2).normalized();
@@ -185,8 +179,7 @@ public:
     /* returns the distance along the ray from the triangle to the
      * ray's origin if there is a valid intersection and -1 otherwise
      * "valid" meaning a single positive solution inside the triangle
-     * using the Moller-Trumbore algorithm
-     */
+     * using the Moller-Trumbore algorithm */
     float intersects(const Ray& r){
         h = r.dir.cross(edge2);
         a = edge1.dot(h);
@@ -202,16 +195,13 @@ public:
         if (t > 0.0f) return t;                     // valid intersection
         return -1.0f;                               // triangle behind ray
     }
-
     // return normal (need param for overloading)
     Vec3 normal(const Vec3&) const {
         return norm;
     }
-
 };
 
 // defines an infinite plane (ex the floor)
-// use triangles (yet to be implemented) for walls
 class Plane : public Obj{
 public:
     Vec3 point,norm;
@@ -231,17 +221,15 @@ public:
 
     /* returns the distance along the ray from the plane to the
      * ray's origin if there is a valid intersection and -1 otherwise
-     * "valid" meaning a single positive solution
-     */
+     * "valid" meaning a single positive solution */
     float intersects(const Ray& r){
-        temp = norm.dot(r.dir);                     // hold dot prod op
-        if(equal(temp,0.0f,TOLERANCE)) return -1.0f;  // if dot~=0
-        temp = (point-r.orig).dot(norm)/temp;       // hold scalar solution
-        if (temp > 0) return temp;                  // ensure (+) solution
+        temp = norm.dot(r.dir);                         // hold dot prod op
+        if(equal(temp,0.0f,TOLERANCE)) return -1.0f;    // if dot~=0
+        temp = (point-r.orig).dot(norm)/temp;           // hold scalar solution
+        if (temp > 0) return temp;                      // ensure (+) solution
         return -1.0f;
     }
-
-    // return normal (parameter there for inheritance)
+    // return normal (need param for overloading)
     Vec3 normal(const Vec3&) const {
         return norm;
     }
@@ -253,7 +241,7 @@ public:
     Vec3 center;
     float radius;
 private:
-    Vec3 co;      // center of sphere to origin of ray
+    Vec3 co;
     float disc,t1,t2,b;
 public:
     Sphere(const Vec3& c,
@@ -273,8 +261,7 @@ public:
      * two pos:    ray starts before sphere    (return smallest solution)
      * one pos:    ray starts inside sphere    (cross section - optional)
      * two neg:    ray starts after sphere     (ignore)
-     * no real:    ray does not intersect      (ignore)
-     */
+     * no real:    ray does not intersect      (ignore) */
     float intersects(const Ray& r){
         co = r.orig-center;
         disc = powf(r.dir.dot(co),2)-powf(co.norm(),2)+powf(radius,2);
@@ -288,13 +275,14 @@ public:
         if (t2 < 0.0f) return t1;
         return t2;
     }
-
     // return normal
     Vec3 normal(const Vec3& p) const {
         return (p-center).normalized();
     }
 };
 
+// contains vector of references to all scene objects
+// and determines first object a ray intersects with
 class Objs {
 public:
     std::vector<Obj*> objects;
@@ -345,6 +333,7 @@ public:
     }
 };
 
+// contains all lighting information and calculates pixel values
 class LightSource {
 public:
     Vec3 position;
@@ -369,7 +358,6 @@ public:
         maxDepth(depth){
         background = Colour(0.0f,0.0f,0.0f); // if doesn't hit anything
     }
-
     // bind a single pixel value in range [0.0f,1.0f]
     float bindPixel(float value){
         if (value <= 0.0f) return 0.0f;
@@ -380,11 +368,10 @@ public:
     Vec3 bindVec(Vec3 v){
         return Vec3(bindPixel(v(0)),bindPixel(v(1)),bindPixel(v(2)));
     }
-
     // determine the colour of a particular pixel
     // use Phong shading method
     // use shadow rays
-    //
+    // optional reflections
     Colour illuminate(Objs& objs,
                       const Ray& r,
                       int recursionDepth){
@@ -436,37 +423,12 @@ public:
     }
 };
 
-// sets up the camera and image plane and optionally switched the x-axis
-// to be positive to the right if that is more intuitive
-void setup(Camera& cam,
-           ImagePlane& im,
-           bool posXright,
+// ensure the normals of planes and triangles are facing the in the right direction
+// otherwise shadows will not appear
+void checkNormals(Camera& cam,
            const std::vector<Plane*> &planes,
-           const std::vector<Sphere*> &spheres,
-           const std::vector<Triangle*> &triangles,
-           LightSource& L){
+           const std::vector<Triangle*> &triangles){
 
-    // if the user prefers the x-axis positive to the right,
-    // mirror all coordinates
-    if (posXright) {
-        cam.position    = mult(cam.position, Vec3(-1,1,1));
-        cam.lookingAt   = mult(cam.lookingAt,Vec3(-1,1,1));
-        L.position = mult(L.position,Vec3(-1,1,1));
-        for(auto it=planes.begin();it!=planes.end();++it){
-            (*it)->point = mult((*it)->point, Vec3(-1,1,1));
-            (*it)->norm = mult((*it)->norm, Vec3(-1,1,1));
-        }
-        for(auto it=spheres.begin();it!=spheres.end();++it){
-            (*it)->center = mult((*it)->center, Vec3(-1,1,1));
-        }
-        for(auto it=triangles.begin();it!=triangles.end();++it){
-            (*it)->v1 = mult((*it)->v1, Vec3(-1,1,1));
-            (*it)->v2 = mult((*it)->v2, Vec3(-1,1,1));
-            (*it)->v3 = mult((*it)->v3, Vec3(-1,1,1));
-            (*it)->edge1 = mult((*it)->edge1, Vec3(-1,1,1));
-            (*it)->edge2 = mult((*it)->edge2, Vec3(-1,1,1));
-        }
-    }
     // check the normal of planes and triangles against the camera
     // if the normals don't face the camera, reverse them
     for(auto it=planes.begin();it!=planes.end();++it){
@@ -475,36 +437,32 @@ void setup(Camera& cam,
     }
     for(auto it=triangles.begin();it!=triangles.end();++it){
         if ((*it)->norm.dot(cam.position-(*it)->v1) < 0.0f)
-
             (*it)->norm *= -1.0f;
     }
-    cam.setup();
-    im.setup(cam);
 }
 
 int main(int, char**){
-    // default positive axes are (x-left, y-up, z-out of screen)
-    // set the following to true to swap the x-axis
-    bool posXright = true;
+    // positive axes are (x-right, y-up, z-out of screen)
 
     // DEFINE CAMERA
     // (position,lookingAt,upAxis)
     Camera cam(Vec3(1.5,0,4),Vec3(0,0,0),Vec3(0,1,0));
-    // (width,height,view angle(deg),dist from camera)
-    ImagePlane im(640,480,80,1);
+
+    // DEFINE IMAGE PLANE
+    // (width,height,viewAngle(deg),distFromCamera,camera)
+    ImagePlane im(640,480,80,1,cam);
 
     // DEFINE OBJECTS IN SCENE
 
     // PLANES
-    // normal can be any length and it will be normalized during construction
-    // normal may be reversed to ensure correct lighting
+    // if needed, passed normal vector will be scaled or reversed
     Plane floor  (Vec3(0,-2,0),         // point
                   Vec3(0,-1,0),         // normal
                   Colour(.9f,.9f,.9f),  // ambient
                   Colour(.9f,.9f,.9f),  // diffuse
                   Colour(.9f,.9f,.9f),  // specular
                   Colour(-1,-1,-1),     // reflection
-                  2);                   // alpha (for specular
+                  2);                   // alpha (for specular)
     Plane ceiling(Vec3(0,2,0),
                   Vec3(0,1,0),
                   Colour(.9f,.9f,.9f),
@@ -541,6 +499,7 @@ int main(int, char**){
                   Colour(-1,-1,-1),
                   2);
 
+    // only objects added to appropriate vector will appear in scene
     std::vector<Plane*> planes;
     planes.push_back(&floor);
     planes.push_back(&ceiling);
@@ -550,22 +509,14 @@ int main(int, char**){
     planes.push_back(&front);
 
     // SPHERES
-    // Sphere s(position,radius,ambient,diffuse,specular,reflects,alpha)
-    Sphere s1   (Vec3(0.5f,0,0),
-                 1,
-                 Colour(.6f,.2f,.6f),
-                 Colour(.6f,.2f,.6f),
-                 Colour(.6f,.2f,.6f),
-                 Colour(1,1,1),
-                 5);
-    Sphere s2   (Vec3(2,2,1),
-                 1,
-                 Colour(.6f,.2f,.6f),
-                 Colour(.6f,.2f,.6f),
-                 Colour(.6f,.2f,.6f),
-                 Colour(-1,-1,-1),
-                 5);
-    Sphere s3   (Vec3(-1.5f,-.5f,1),
+    Sphere s1   (Vec3(0.5f,0,0),        // center
+                 1,                     // radius
+                 Colour(.6f,.2f,.6f),   // ambient
+                 Colour(.6f,.2f,.6f),   // diffuse
+                 Colour(.6f,.2f,.6f),   // specular
+                 Colour(1,1,1),         // reflections
+                 5);                    // alpha
+    Sphere s2   (Vec3(-1.5f,-.5f,1),
                  .5f,
                  Colour(.1f,.1f,.6f),
                  Colour(.1f,.1f,.6f),
@@ -575,42 +526,30 @@ int main(int, char**){
 
     std::vector<Sphere*> spheres;
     spheres.push_back(&s1);
-    //spheres.push_back(&s2);
-    spheres.push_back(&s3);
+    spheres.push_back(&s2);
 
     // TRIANGLES
-    // Triangle t(v1,v2,v3,ambient,diffuse,specular,reflects,alpha)
-    Triangle t1(Vec3(0,-1,0),
-                Vec3(1,1,0),
-                Vec3(1,-1,0),
-                Colour(.9f,.9f,.9f),
-                Colour(.9f,.9f,.9f),
-                Colour(.9f,.9f,.9f),
-                Colour(-1,-1,-1),
-                2);
-    Triangle t2(Vec3(-2,0,-1),
-                Vec3(-1,1,-1),
-                Vec3(0,0,0),
-                Colour(.9f,.9f,.9f),
-                Colour(.9f,.9f,.9f),
-                Colour(.9f,.9f,.9f),
-                Colour(-1,-1,-1),
-                2);
+    Triangle t1(Vec3(0,-1,0),           // vertex 1
+                Vec3(1,1,0),            // vertex 2
+                Vec3(1,-1,0),           // vertex 3
+                Colour(.9f,.9f,.9f),    // ambient
+                Colour(.9f,.9f,.9f),    // diffuse
+                Colour(.9f,.9f,.9f),    // specular
+                Colour(-1,-1,-1),       // reflects
+                2);                     // alpha
 
     std::vector<Triangle*> triangles;
     //triangles.push_back(&t1);
-    //triangles.push_back(&t2);
 
     // DEFINE LIGHTING SOURCE
-    // (position,ambient,diffuse,specular,recursion depth)
-    LightSource L(Vec3(0,1.9f,-.5),
-                  Colour(.6f,.6f,.6f),
-                  Colour(.6f,.6f,.6f),
-                  Colour(.4f,.4f,.4f),
-                  4);
+    LightSource L(Vec3(0,1.9f,-.5),     // position
+                  Colour(.6f,.6f,.6f),  // ambient
+                  Colour(.6f,.6f,.6f),  // diffuse
+                  Colour(.4f,.4f,.4f),  // specular
+                  4);                   // recursion depth
 
-    // optionally mirror axis, verify normals
-    setup(cam,im,posXright,planes,spheres,triangles,L);
+    // verify normals face camera
+    checkNormals(cam,planes,triangles);
 
     // INITIALIZE LOOP VARIABLES
     Ray pixel;
