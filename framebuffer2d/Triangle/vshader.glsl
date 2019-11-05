@@ -7,7 +7,7 @@ const vec3 COLORS[3] = vec3[](
     vec3(0.0,0.0,1.0));
 
 // (x,y,degrees,scale)
-const vec4 PTS[4] = vec4[](
+vec4 PTS[4] = vec4[](
     vec4(-.9,-.9,  0, .5),
     vec4(-.5, .9, 30, .8),
     vec4( .5,-.9, 60,1.1),
@@ -15,6 +15,7 @@ const vec4 PTS[4] = vec4[](
 
 uniform mat4 M;
 uniform float time;
+uniform vec2[] cpts;
 out vec3 fcolor;
 
 vec4 bezier(vec4 p0, vec4 p1, vec4 p2, vec4 p3, float t){
@@ -30,6 +31,11 @@ vec4 bezier(vec4 p0, vec4 p1, vec4 p2, vec4 p3, float t){
 
 void main() {
 
+    // update PTS with control point locations
+    PTS[0].xy = cpts[0].xy;
+    PTS[1].xy = cpts[1].xy;
+    PTS[2].xy = cpts[2].xy;
+    PTS[3].xy = cpts[3].xy;
     /// find position on bezier curve
     vec4 result = bezier(PTS[0],PTS[1],PTS[2],PTS[3],time);
 

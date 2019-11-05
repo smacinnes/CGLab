@@ -8,20 +8,19 @@ private:
     GLuint _vbo; ///< memory buffer
 public:
     void init(){
-        check_error_gl();
         ///--- Compile the shaders
         // C:/Users/smaci/Documents/Classes/CSCI_4471/CGLab/framebuffer2d/Triangle
         _pid = OpenGP::load_shaders(
             "C:/Users/smaci/Documents/Classes/CSCI_4471/CGLab/framebuffer2d/Triangle/vshader.glsl",
             "C:/Users/smaci/Documents/Classes/CSCI_4471/CGLab/framebuffer2d/Triangle/fshader.glsl");
-        check_error_gl();
+
         if(!_pid) exit(EXIT_FAILURE);
         glUseProgram(_pid);
-        check_error_gl();
+
         ///--- Vertex one vertex Array
         glGenVertexArrays(1, &_vao);
         glBindVertexArray(_vao);
-        check_error_gl();
+
         ///--- Vertex Buffer
         const GLfloat vpoint[] = { /*V1*/-1.0f, -1.0f, 0.0f,
                                    /*V2*/ 1.0f, -1.0f, 0.0f,
@@ -69,7 +68,7 @@ public:
 
     }
 
-    void draw(float t){
+    void draw(float t,const vector<vec2>& controlPoints){
 
         glUseProgram(_pid);
         glBindVertexArray(_vao);
@@ -96,6 +95,15 @@ public:
         float SPEED_UP_FACTOR = 0.5;
         GLuint t_id = unsigned(glGetUniformLocation(_pid, "time"));
         glUniform1f(int(t_id), modf(t*SPEED_UP_FACTOR,&unused));
+
+        // control points to shader for bezier curve animation path
+        vec2 cpts[] = {controlPoints.at(0),
+                       controlPoints.at(1),
+                       controlPoints.at(2),
+                       controlPoints.at(3)};
+        GLuint c_id = unsigned(glGetUniformLocation(_pid, "cpts"));
+        //glUniform3fv(int(c_id), controlPoints.size(), reinterpret_cast<GLfloat *>(controlPoints.data()));
+        glUniform2fv(int(c_id), 4, reinterpret_cast<GLfloat *>(cpts));
 
         ///--- Draw
         glDrawArrays(GL_TRIANGLES, 0, 3);
