@@ -8,14 +8,15 @@ const vec3 COLORS[3] = vec3[](
 
 // (x,y,degrees,scale)
 vec4 PTS[4] = vec4[](
-    vec4(-.9,-.9,  0, .5),
-    vec4(-.5, .9, 30, .8),
-    vec4( .5,-.9, 60,1.1),
-    vec4( .9, .9, 90,1.4));
+    vec4(-1,-1,  0, .5),
+    vec4(-1, 1, 30, .8),
+    vec4( 1,-1, 60,1.1),
+    vec4( 1, 1, 90,1.4));
 
 uniform mat4 M;
 uniform float time;
 uniform vec2[] cpts;
+
 out vec3 fcolor;
 
 vec4 bezier(vec4 p0, vec4 p1, vec4 p2, vec4 p3, float t){

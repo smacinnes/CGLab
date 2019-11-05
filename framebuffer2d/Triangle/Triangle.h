@@ -1,3 +1,10 @@
+/* Assignment 2: Flash Animation
+ * CSCI 4471: Computer Graphics
+ * Seamus MacInnes
+ * A00415673
+ * Nov 05 2019
+ */
+
 #pragma once
 #include "icg_common.h"
 
@@ -9,10 +16,12 @@ private:
 public:
     void init(){
         ///--- Compile the shaders
+        /// DON'T KNOW WHY NEED ABSOLUTE PATHS BUT JUST DO
         // C:/Users/smaci/Documents/Classes/CSCI_4471/CGLab/framebuffer2d/Triangle
+        // C:/Users/Seamus Macinnes/Documents/CGLab/framebuffer2d/Triangle
         _pid = OpenGP::load_shaders(
-            "C:/Users/smaci/Documents/Classes/CSCI_4471/CGLab/framebuffer2d/Triangle/vshader.glsl",
-            "C:/Users/smaci/Documents/Classes/CSCI_4471/CGLab/framebuffer2d/Triangle/fshader.glsl");
+            "C:/Users/Seamus Macinnes/Documents/CGLab/framebuffer2d/Triangle/vshader.glsl",
+            "C:/Users/Seamus Macinnes/Documents/CGLab/framebuffer2d/Triangle/fshader.glsl");
 
         if(!_pid) exit(EXIT_FAILURE);
         glUseProgram(_pid);
@@ -30,50 +39,27 @@ public:
         glBufferData(GL_ARRAY_BUFFER, sizeof(vpoint), vpoint, GL_STATIC_DRAW);
 
         ///--- vpoint shader attribute
-        GLuint position = unsigned(glGetAttribLocation(_pid, "vpoint")); ///< Fetch Attribute ID for Vertex Positions
+        GLuint position = unsigned(glGetAttribLocation(_pid, "vpoint"));
         glEnableVertexAttribArray(position); /// Enable it
-        glVertexAttribPointer(position, 3, GL_FLOAT, DONT_NORMALIZE, ZERO_STRIDE, ZERO_BUFFER_OFFSET);
+        glVertexAttribPointer(position, 3, GL_FLOAT,
+                              DONT_NORMALIZE, ZERO_STRIDE, ZERO_BUFFER_OFFSET);
 
         ///--- to avoid the current object being polluted
         glBindVertexArray(0);
         glUseProgram(0);
-
-        // glGenVertexArrays            <--- create vertex array
-        // glBindVertexArray            <--- and bind it
-        //---
-        // compile_shaders              <--- compile the shaders
-        // glUseProgram                 <--- bind the shader (for attributes)
-        //---
-        // opengp::load_texture         <--- load texture from file
-        // glGenBuffers                 <--- generate buffer pointer
-        // glBindBuffers                <--- make it current
-        // glBufferData                 <--- tell it where to find data
-        //---
-        // glGetAttribLocation          <--- fetch attribute ID
-        // glEnableVertexAttribArray    <--- make it the current
-        // glVertexAttribPointer        <--- specify layout of attribute
-        //--- To avoid resource pollution, unload resources
-        // glUseProgram(0)              <--- unbind program (safety!)
-        // glBindVertexArray(0)         <--- unbind array (safety!)
-        check_error_gl();
     }
 
     void cleanup(){
-
         glBindVertexArray(0);
         glUseProgram(0);
         glDeleteBuffers(1, &_vbo);
         glDeleteProgram(_pid);
         glDeleteVertexArrays(1, &_vao);
-
     }
 
     void draw(float t,const vector<vec2>& controlPoints){
-
         glUseProgram(_pid);
         glBindVertexArray(_vao);
-        ///--- Set transformation uniform
-        /// @see http://eigen.tuxfamily.org/dox/classEigen_1_1AngleAxis.html#details
 
         // FIRST LEVEL OF TRANSFORMATION HIERARCHY
 
@@ -84,7 +70,8 @@ public:
         S(0,0) = .25f;
         S(1,1) = -.15f;
         // rotate according to time for flapping affect
-        mat4 R = Eigen::Affine3f(Eigen::AngleAxisf(.3f*std::sin(5*t), vec3::UnitZ())).matrix();
+        mat4 R = Eigen::Affine3f(Eigen::AngleAxisf(.3f*std::sin(5*t),
+                                                   vec3::UnitZ())).matrix();
         // pass resulting matrix to shader
         mat4 M = R*S*T1;
         GLuint M_id = unsigned(glGetUniformLocation(_pid, "M"));
@@ -102,7 +89,6 @@ public:
                        controlPoints.at(2),
                        controlPoints.at(3)};
         GLuint c_id = unsigned(glGetUniformLocation(_pid, "cpts"));
-        //glUniform3fv(int(c_id), controlPoints.size(), reinterpret_cast<GLfloat *>(controlPoints.data()));
         glUniform2fv(int(c_id), 4, reinterpret_cast<GLfloat *>(cpts));
 
         ///--- Draw
