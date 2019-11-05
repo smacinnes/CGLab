@@ -35,8 +35,7 @@ static const char* line_fshader =
 #include "line_fshader.glsl"
 ;
 
-static Triangle tri1;
-static Triangle tri2;
+static Triangle tri;
 
 void init();
 void quadInit(std::unique_ptr<GPUMesh>& quad);
@@ -193,8 +192,7 @@ void init() {
     loadTexture(cat, "nyancat.png");
     loadTexture(night, "night.png");
 
-    tri1.init();
-    tri2.init();
+    tri.init();
 
     line = std::unique_ptr<GPUMesh>(new GPUMesh());
     line->set_vbo<Vec2>("vposition", controlPoints);
@@ -289,7 +287,7 @@ void drawScene(float timeCount)
     glDisable(GL_BLEND);
 
     //--- THE TRIANGLES
-    tri1.draw(t,controlPoints);
-    //tri1.draw(t+1,controlPoints);
+    tri.draw(t,controlPoints);
+    //tri.draw(t+1,controlPoints);
 
 }
