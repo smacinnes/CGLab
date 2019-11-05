@@ -57,6 +57,7 @@ public:
         glDeleteVertexArrays(1, &_vao);
     }
 
+    // Draw the triangle at correct position along bezier curve
     void draw(float t,const vector<vec2>& controlPoints){
         glUseProgram(_pid);
         glBindVertexArray(_vao);
@@ -83,7 +84,7 @@ public:
         GLuint t_id = unsigned(glGetUniformLocation(_pid, "time"));
         glUniform1f(int(t_id), modf(t*SPEED_UP_FACTOR,&unused));
 
-        // control points to shader for bezier curve animation path
+        // pass control points to shader for bezier curve animation path
         vec2 cpts[] = {controlPoints.at(0),
                        controlPoints.at(1),
                        controlPoints.at(2),
