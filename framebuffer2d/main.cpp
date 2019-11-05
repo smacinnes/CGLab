@@ -1,3 +1,10 @@
+/* Assignment 2: Flash Animation
+ * CSCI 4471: Computer Graphics
+ * Seamus MacInnes
+ * A00415673
+ * Nov 05 2019
+ */
+
 #include <OpenGP/GL/Application.h>
 #include <OpenGP/external/LodePNG/lodepng.cpp>
 #include "Triangle/Triangle.h"
@@ -6,6 +13,7 @@ using namespace OpenGP;
 #define POINTSIZE 10.0f
 
 const int width = 640, height = 640;
+const float SpeedFactor = 1;
 typedef Eigen::Transform<float, 3, Eigen::Affine> Transform;
 
 static const char* fb_vshader =
@@ -27,14 +35,9 @@ static const char* line_fshader =
 #include "line_fshader.glsl"
 ;
 
-static std::unique_ptr<Shader> lineShader;
-static std::unique_ptr<GPUMesh> line;
-static std::vector<Vec2> controlPoints;
-
 static Triangle tri1;
 static Triangle tri2;
 
-const float SpeedFactor = 1;
 void init();
 void quadInit(std::unique_ptr<GPUMesh>& quad);
 void loadTexture(std::unique_ptr<RGBA8Texture>& texture, const char* filename);
@@ -45,6 +48,10 @@ static std::unique_ptr<GPUMesh> quad;
 static std::unique_ptr<Shader> quadShader;
 static std::unique_ptr<Shader> fbShader;
 
+static std::unique_ptr<Shader> lineShader;
+static std::unique_ptr<GPUMesh> line;
+static std::vector<Vec2> controlPoints;
+
 static std::unique_ptr<RGBA8Texture> cat;
 static std::unique_ptr<RGBA8Texture> night;
 
@@ -53,81 +60,73 @@ static std::unique_ptr<RGBA8Texture> c_buf;
 
 int main(int, char**) {
 
-    // Mouse position and selected point
+    // Hold mouse position and selected control point
     Vec2 position = Vec2(0,0);
     Vec2 *selection = nullptr;
 
     Application app;
     init();
 
-    /// TODO: initialize framebuffer
+    // initialize framebuffer
     fb = std::unique_ptr<Framebuffer>(new Framebuffer());
 
-    /// TODO: initialize color buffer texture, and allocate memory
+    // initialize color buffer texture, and allocate memory
     c_buf = std::unique_ptr<RGBA8Texture>(new RGBA8Texture());
     c_buf->allocate(width, height);
 
-    /// TODO: attach color texture to framebuffer
+    // attach color texture to framebuffer
     fb->attach_color_texture(*c_buf);
 
+    // CREATE WINDOW
     Window& window = app.create_window([&](Window&) {
         glViewport(0, 0, width, height);
+        glPointSize(POINTSIZE);
 
-        /// TODO: First draw the scene onto framebuffer
-        /// bind and then unbind framebuffer
         fb->bind();
         glClear(GL_COLOR_BUFFER_BIT);
         drawScene(float(glfwGetTime()));
         fb->unbind();
 
-        /// Render to Window, uncomment the lines and do TODOs
-        glViewport(0, 0, width, height);
-        glClear(GL_COLOR_BUFFER_BIT);
         fbShader->bind();
-        // TODO: Bind texture and set uniforms
-        glActiveTexture(GL_TEXTURE0);
         c_buf->bind();
+        glActiveTexture(GL_TEXTURE0);
         fbShader->set_uniform("tex", 0);
         fbShader->set_uniform("tex_width", float(width));
         fbShader->set_uniform("tex_height", float(height));
         quad->set_attributes(*fbShader);
         quad->draw();
-
         c_buf->unbind();
         fbShader->unbind();
 
-        glPointSize(POINTSIZE);
-
+        // DRAW LINE THROUGH CONTROL POINTS
         lineShader->bind();
-
-        // Draw line red
         lineShader->set_uniform("selection", -1);
         line->set_attributes(*lineShader);
         line->set_mode(GL_LINE_STRIP);
         line->draw();
 
-        // Draw points red and selected point blue
-        if(selection!=nullptr) lineShader->set_uniform("selection", int(selection-&controlPoints[0]));
+        // DRAW CONTROL POINTS
+        if(selection!=nullptr)
+            lineShader->set_uniform("selection",
+                                    int(selection-&controlPoints[0]));
         line->set_mode(GL_POINTS);
         line->draw();
-
         lineShader->unbind();
 
     });
-    window.set_title("FrameBuffer");
+
+    window.set_title("Assignment 2: Flash Animation - A00415673");
     window.set_size(width, height);
 
-
-
-    //-----------------------------------------------------------------
     // CONTROLLING BEZIER WITH MOUSE CURSOR
 
     // Mouse movement callback
     window.add_listener<MouseMoveEvent>([&](const MouseMoveEvent &m){
         // Mouse position in clip coordinates
-        Vec2 p = 2.0f*(Vec2(m.position.x()/width,-m.position.y()/height) - Vec2(0.5f,-0.5f));
+        Vec2 p = 2.0f*(Vec2(m.position.x()/width,-m.position.y()/height)
+                       - Vec2(0.5f,-0.5f));
         if( selection && (p-position).norm() > 0.0f) {
-            /// TODO: Make selected control points move with cursor
+            // Make selected control points move with cursor
             selection->x() = p.x();
             selection->y() = p.y();
             line->set_vbo<Vec2>("vposition", controlPoints);
@@ -158,12 +157,6 @@ int main(int, char**) {
         }
     });
 
-
-
-
-
-
-
     return app.run();
 }
 
@@ -188,6 +181,13 @@ void init() {
     lineShader->add_fshader_from_source(line_fshader);
     lineShader->link();
 
+    // initial control points for bezier animation path
+    controlPoints = std::vector<Vec2>();
+    controlPoints.push_back(Vec2(-0.7f,-0.2f));
+    controlPoints.push_back(Vec2(-0.3f, 0.2f));
+    controlPoints.push_back(Vec2( 0.3f, 0.5f));
+    controlPoints.push_back(Vec2( 0.7f, 0.0f));
+
     quadInit(quad);
 
     loadTexture(cat, "nyancat.png");
@@ -195,13 +195,6 @@ void init() {
 
     tri1.init();
     tri2.init();
-
-
-    controlPoints = std::vector<Vec2>();
-    controlPoints.push_back(Vec2(-0.7f,-0.2f));
-    controlPoints.push_back(Vec2(-0.3f, 0.2f));
-    controlPoints.push_back(Vec2( 0.3f, 0.5f));
-    controlPoints.push_back(Vec2( 0.7f, 0.0f));
 
     line = std::unique_ptr<GPUMesh>(new GPUMesh());
     line->set_vbo<Vec2>("vposition", controlPoints);
@@ -232,21 +225,22 @@ void quadInit(std::unique_ptr<GPUMesh>& quad) {
 }
 
 void loadTexture(std::unique_ptr<RGBA8Texture>& texture, const char* filename) {
-    // Used snippet from https://raw.githubusercontent.com/lvandeve/lodepng/master/examples/example_decode.cpp
     std::vector<unsigned char> image; //the raw pixels
     unsigned width, height;
     //decode
     unsigned error = lodepng::decode(image, width, height, filename);
     //if there's an error, display it
-    if (error) std::cout << "decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
-    //the pixels are now in the vector "image", 4 bytes per pixel, ordered RGBARGBA..., use it as texture, draw it, ...
-
+    if (error) std::cout << "decoder error " << error << ": "
+                         << lodepng_error_text(error) << std::endl;
     // unfortunately they are upside down...lets fix that
     unsigned char* row = new unsigned char[4 * width];
     for (unsigned i = 0; i < height / 2; ++i) {
-        memcpy(row, &image[4 * i * width], 4 * width * sizeof(unsigned char));
-        memcpy(&image[4 * i * width], &image[image.size() - 4 * (i + 1) * width], 4 * width * sizeof(unsigned char));
-        memcpy(&image[image.size() - 4 * (i + 1) * width], row, 4 * width * sizeof(unsigned char));
+        memcpy(row, &image[4 * i * width],
+                4 * width * sizeof(unsigned char));
+        memcpy(&image[4 * i * width],&image[image.size() - 4 * (i + 1) * width],
+                4 * width * sizeof(unsigned char));
+        memcpy(&image[image.size() - 4 * (i + 1) * width], row,
+                4 * width * sizeof(unsigned char));
     }
     delete[] row;
 
@@ -261,7 +255,7 @@ void drawScene(float timeCount)
 
     float t = timeCount * SpeedFactor;
 
-    // the background
+    //--- THE BACKGROUND TEXTURE
     Transform TRS = Transform::Identity();
     quadShader->bind();
     quadShader->set_uniform("M", TRS.matrix());
@@ -276,20 +270,16 @@ void drawScene(float timeCount)
     quad->draw();
     night->unbind();
 
+    //--- THE FLYING NYAN CAT
     float xcord = 0.7f * std::cos(t);
     float ycord = 0.7f * std::sin(t);
     TRS *= Eigen::Translation3f(xcord, ycord, 0);
     TRS *= Eigen::AngleAxisf(float(double(t) + M_PI / 2), Eigen::Vector3f::UnitZ());
     TRS *= Eigen::AlignedScaling3f(0.2f, 0.2f, 1);
-
     quadShader->bind();
     quadShader->set_uniform("M", TRS.matrix());
-    // Make texture unit 0 active
     glActiveTexture(GL_TEXTURE0);
-    // Bind the texture to the active unit for drawing
     cat->bind();
-    // Set the shader's texture uniform to the index of the texture unit we have
-    // bound the texture to
     quadShader->set_uniform("tex", 0);
     quad->set_attributes(*quadShader);
     quad->draw();
@@ -298,7 +288,8 @@ void drawScene(float timeCount)
 
     glDisable(GL_BLEND);
 
+    //--- THE TRIANGLES
     tri1.draw(t,controlPoints);
-    //tri1.draw(t+1);
+    //tri1.draw(t+1,controlPoints);
 
 }
