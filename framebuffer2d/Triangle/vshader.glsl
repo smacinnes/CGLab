@@ -7,18 +7,21 @@ const vec3 COLORS[3] = vec3[](
     vec3(0.0,0.0,1.0));
 
 // (x,y,degrees,scale)
+// (x,y) passed each frame
+// (degre,scale) remain constant, edit here to change animation
 vec4 PTS[4] = vec4[](
     vec4(-1,-1,  0, .5),
     vec4(-1, 1, 30, .8),
     vec4( 1,-1, 60,1.1),
     vec4( 1, 1, 90,1.4));
 
-uniform mat4 M;
-uniform float time;
-uniform vec2[] cpts;
+uniform mat4 M;         // primary transformation matrix
+uniform float time;     // [0,1] where on path to draw triangle
+uniform vec2[] cpts;    // bezier control points
 
 out vec3 fcolor;
 
+// De Casteljau's algorithm to find position on bezier curve
 vec4 bezier(vec4 p0, vec4 p1, vec4 p2, vec4 p3, float t){
     vec4 p01 = mix(p0, p1, t);
     vec4 p12 = mix(p1, p2, t);
@@ -37,6 +40,7 @@ void main() {
     PTS[1].xy = cpts[1].xy;
     PTS[2].xy = cpts[2].xy;
     PTS[3].xy = cpts[3].xy;
+
     /// find position on bezier curve
     vec4 result = bezier(PTS[0],PTS[1],PTS[2],PTS[3],time);
 
