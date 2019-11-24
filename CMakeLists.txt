@@ -13,6 +13,18 @@ include(common/GLFW.cmake)
 
 #--- Subprojects
 #add_subdirectory(vector)
-add_subdirectory(raytrace)
-add_subdirectory(rasterize)
+#add_subdirectory(raytrace)
+#add_subdirectory(rasterize)
+add_subdirectory(glsl)
+#add_subdirectory(antialiasing)
+add_subdirectory(transform)
+add_subdirectory(glsltexture)
+add_subdirectory(GeomShader)
+add_subdirectory(framebuffer2d)
+add_subdirectory(mouse)
+add_subdirectory(mesh3D)
+add_subdirectory(terrains)
+add_subdirectory(virtuallandscape)
+add_subdirectory(PerlinNoise)
+
 
