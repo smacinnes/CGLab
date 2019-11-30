@@ -42,7 +42,7 @@ static std::map<std::string, std::unique_ptr<RGBA8Texture>> terrainTextures;
 static Vec3 cameraPos;
 static Vec3 cameraFront;
 static Vec3 cameraUp;
-static float halflife;
+//static float halflife;
 static float yaw;
 static float pitch;
 
@@ -95,9 +95,23 @@ int main(int, char**){
         mouse = m.position;
     });
 
+    // anyway to not have the cursor move out the window?
+    // like most video games - cursor doesn't actually move
+    float speed = 0.2f;
     window.add_listener<KeyEvent>([&](const KeyEvent &k){
         ///--- TODO: Implement WASD keys HINT: compare k.key to GLFW_KEY_W
-
+        if(k.key == GLFW_KEY_W){ // forward
+            cameraPos += speed*cameraFront;
+        }
+        else if(k.key == GLFW_KEY_S){ //backwards
+            cameraPos -= speed*cameraFront;
+        }
+        else if(k.key == GLFW_KEY_A){ // left
+            cameraPos -= speed*cameraFront.cross(Vec3(0.0f, 0.0f, 1.0f)).normalized();
+        }
+        else if(k.key == GLFW_KEY_D){ // right
+            cameraPos += speed*cameraFront.cross(Vec3(0.0f, 0.0f, 1.0f)).normalized();
+        }
     });
 
     return app.run();
@@ -157,16 +171,20 @@ void genTerrainMesh() {
     unsigned int n_height = 256;
     float f_width = 5.0f; // Grid width, centered at 0,0
     float f_height = 5.0f;
+    float t_width = f_width/n_width;    // triangle dimensions
+    float t_height = f_height/n_height;
 
     std::vector<Vec3> points;
     std::vector<unsigned int> indices;
     std::vector<Vec2> texCoords;
 
+    Vec3 start = Vec3(-f_width/2,-f_height/2,0.0f); //location of vertex i=j=0
+
     ///--- Vertex positions, tex coords
     for(unsigned int j=0; j<n_height; ++j) {
         for(unsigned int i=0; i<n_width; ++i) {
             /// TODO: calculate vertex positions, texture indices done for you
-            points.push_back(Vec3(0, 0, 0.0f));
+            points.push_back(start+Vec3(i*t_width,j*t_height,0.0f));
             texCoords.push_back( Vec2( i/float(n_width-1), j/float(n_height-1)) );
         }
     }
@@ -178,8 +196,8 @@ void genTerrainMesh() {
         indices.push_back((j+1)*n_width);
         for(unsigned int i=1; i<n_width; ++i) {
             /// TODO: push_back next two vertices HINT: Each one will generate a new triangle
-            indices.push_back(0);
-            indices.push_back(0);
+            indices.push_back(j*n_width+i);
+            indices.push_back((j+1)*n_width+i);
         }
         ///--- A new strip will begin when this index is reached
         indices.push_back(resPrim);
@@ -214,18 +232,21 @@ void drawSkybox() {
     Vec3 look = cameraFront + cameraPos;
     Mat4x4 V = lookAt(cameraPos, look, cameraUp); // pos, look, up
     skyboxShader->set_uniform("V", V);
+
     Mat4x4 P = perspective(80.0f, width/float(height), 0.1f, 60.0f);
     skyboxShader->set_uniform("P", P);
 
     /// TODO: Bind Textures and set uniform
     /// HINT: Use GL_TEXTURE0, and texture type GL_TEXTURE_CUBE_MAP
-
-
+    glActiveTexture(GL_TEXTURE0);
+    glEnable(GL_TEXTURE_CUBE_MAP);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
 
     /// TODO: Set atrributes, draw cube using GL_TRIANGLE_STRIP mode
     glEnable(GL_DEPTH_TEST);
-
-
+    skyboxMesh->set_attributes(*skyboxShader);
+    skyboxMesh->set_mode(GL_TRIANGLE_STRIP);
+    skyboxMesh->draw();
 
     skyboxShader->unbind();
 }
@@ -235,13 +256,15 @@ void drawTerrain() {
 
     /// TODO: Create transformation matrices HINT: use lookAt and perspective
     Mat4x4 M = Mat4x4::Identity(); // Identity should be fine
+    // scaling
+    M = scale(4,4,4)*M;
     terrainShader->set_uniform("M", M);
 
     Vec3 look = cameraFront + cameraPos;
-    Mat4x4 V = Mat4x4::Identity(); /// HERE
+    Mat4x4 V = lookAt(cameraPos,look,cameraUp); /// HERE
     terrainShader->set_uniform("V", V);
 
-    Mat4x4 P = Mat4x4::Identity(); /// AND HERE
+    Mat4x4 P = perspective(80.0f, width / float(height), 0.01f, 60.0f); /// AND HERE
     terrainShader->set_uniform("P", P);
 
     terrainShader->set_uniform("viewPos", cameraPos);
@@ -255,19 +278,19 @@ void drawTerrain() {
         ++i;
     }
     /// TODO: Bind height texture to GL_TEXTURE0 and set uniform noiseTex
-
-
-
+    glActiveTexture(GL_TEXTURE0);
+    heightTexture->bind();
+    terrainShader->set_uniform("noiseTex", 0);
 
     // Draw terrain using triangle strips
     glEnable(GL_DEPTH_TEST);
-    // glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+    glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
     terrainMesh->set_attributes(*terrainShader);
     terrainMesh->set_mode(GL_TRIANGLE_STRIP);
     glEnable(GL_PRIMITIVE_RESTART);
     glPrimitiveRestartIndex(resPrim);
     /// TODO: Uncomment line below once this function is implemented
-    // terrainMesh->draw();
+    terrainMesh->draw();
 
     terrainShader->unbind();
 }
