@@ -22,7 +22,7 @@ void loadTexture(std::unique_ptr<RGBA8Texture> &texture, const char *filename) {
         memcpy(&image[4*i*width], &image[image.size() - 4*(i+1)*width], 4*width*sizeof(unsigned char));
         memcpy(&image[image.size() - 4*(i+1)*width], row, 4*width*sizeof(unsigned char));
     }
-    delete row;
+    delete[] row;
 
     texture = std::unique_ptr<RGBA8Texture>(new RGBA8Texture());
     texture->upload_raw(width, height, &image[0]);
@@ -44,5 +44,5 @@ void loadTexture(std::vector<unsigned char> &image, const char *filename) {
         memcpy(&image[4*i*width], &image[image.size() - 4*(i+1)*width], 4*width*sizeof(unsigned char));
         memcpy(&image[image.size() - 4*(i+1)*width], row, 4*width*sizeof(unsigned char));
     }
-    delete row;
+    delete[] row;
 }
