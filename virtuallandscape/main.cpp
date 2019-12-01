@@ -54,8 +54,8 @@ int main(int, char**){
     genCubeMesh();
     genTerrainMesh();
 
-    cameraPos = Vec3(0,0,3);
-    cameraFront = Vec3(0,-1,0);
+    cameraPos = Vec3(5,-5,9);
+    cameraFront = Vec3(0,0,1);
     cameraUp = Vec3(0,0,1);
     yaw = 0.0f;
     pitch = 0.0f;
@@ -71,6 +71,7 @@ int main(int, char**){
     });
     window.set_title("Virtual Landscape");
     window.set_size(width, height);
+
 
     Vec2 mouse(0,0);
     window.add_listener<MouseMoveEvent>([&](const MouseMoveEvent &m){
@@ -169,8 +170,8 @@ void genTerrainMesh() {
     terrainMesh = std::unique_ptr<GPUMesh>(new GPUMesh());
     unsigned int n_width = 256; // Grid resolution
     unsigned int n_height = 256;
-    float f_width = 5.0f; // Grid width, centered at 0,0
-    float f_height = 5.0f;
+    float f_width = 20.0f; // Grid width, centered at 0,0
+    float f_height = 20.0f;
     float t_width = f_width/n_width;    // triangle dimensions
     float t_height = f_height/n_height;
 
@@ -239,7 +240,6 @@ void drawSkybox() {
     /// TODO: Bind Textures and set uniform
     /// HINT: Use GL_TEXTURE0, and texture type GL_TEXTURE_CUBE_MAP
     glActiveTexture(GL_TEXTURE0);
-    glEnable(GL_TEXTURE_CUBE_MAP);
     glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
 
     /// TODO: Set atrributes, draw cube using GL_TRIANGLE_STRIP mode
@@ -257,7 +257,7 @@ void drawTerrain() {
     /// TODO: Create transformation matrices HINT: use lookAt and perspective
     Mat4x4 M = Mat4x4::Identity(); // Identity should be fine
     // scaling
-    M = scale(4,4,4)*M;
+    //M = scale(4,4,1)*M;
     terrainShader->set_uniform("M", M);
 
     Vec3 look = cameraFront + cameraPos;
@@ -284,7 +284,7 @@ void drawTerrain() {
 
     // Draw terrain using triangle strips
     glEnable(GL_DEPTH_TEST);
-    glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+    //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
     terrainMesh->set_attributes(*terrainShader);
     terrainMesh->set_mode(GL_TRIANGLE_STRIP);
     glEnable(GL_PRIMITIVE_RESTART);
