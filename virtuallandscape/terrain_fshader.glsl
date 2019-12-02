@@ -1,5 +1,7 @@
 R"(
 #version 330 core
+#define PI 3.14159265359f;
+
 uniform sampler2D noiseTex;
 
 uniform sampler2D grass;
@@ -39,24 +41,23 @@ void main() {
     /// HINT: Read noiseTex for height at uv
     // options for texture are water,sand,grass,rock,snow
     float waterLevel = 0.0f;    // all below this is water
-    float sandLevel = 0.02f;    // sand can only be below this
-    float sandThresh = 0.1f;    // sand only if not this steep
+    float sandLevel = 0.04f;    // sand can only be below this
+    float sandThresh = 0.1f;   // sand only if N.z greater than this
     float snowLevel = 0.6f;     // snow can only be above this
-    float rockThresh = 0.9f;    // rock if steeper than this
+    float rockThresh = 0.08f;   // rock if N.z less than this
 
     float height = texture2D(noiseTex,uv).r;
-    float incline = abs(N.z);
 
     int tiles = 32; // make nxn grid of the images
     vec2 pixel = tiles*uv - int(tiles*uv);
     // some tweaking to do - ex repeating textures
     if (height <= waterLevel) {
         color = texture(water,pixel);
-    } else if (incline >= rockThresh) {
+    } else if (N.z < rockThresh) {
         color = texture(rock,pixel);
     } else if (height >= snowLevel) {
         color = texture(snow,pixel);
-    } else if (height <= sandLevel && incline <= sandThresh) {
+    } else if (height <= sandLevel && N.z > sandThresh) {
         color = texture(sand,pixel);
     } else {
         color = texture(grass,pixel);

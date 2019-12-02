@@ -135,6 +135,10 @@ void init(){
     terrainShader->link();
 
     ///--- Get height texture
+    /// CHANGE FOR DIFFERENT NOISE FUNCTIONS
+    /// fBm2DTexture
+    /// Ridges
+    /// HybridMultifractal
     heightTexture = std::unique_ptr<R32FTexture>(fBm2DTexture());
 
     ///--- Load terrain and cubemap textures
@@ -256,8 +260,6 @@ void drawTerrain() {
 
     /// TODO: Create transformation matrices HINT: use lookAt and perspective
     Mat4x4 M = Mat4x4::Identity(); // Identity should be fine
-    // scaling
-    //M = scale(4,4,1)*M;
     terrainShader->set_uniform("M", M);
 
     Vec3 look = cameraFront + cameraPos;
