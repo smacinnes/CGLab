@@ -60,6 +60,7 @@ R32FTexture* fBm2DTexture() {
             J = j;
             for(int k = 0; k < octaves; ++k) {
                 /// TODO: Get perlin noise at I,J, add offset, multiply by proper term and add to noise_data
+                // modulus so smaller octaves get repeated
                 noise = perlin_data[(I%width)+(J%width)*height];
                 noise_data[i+j*height] += (noise + offset) * exponent_array[k];
 
@@ -89,7 +90,7 @@ R32FTexture* Ridges() {
     const int height = 512;
     float *perlin_data = perlin2D(width, height, 128);
 
-    ///--- fBm parameters
+    ///--- fBm parameters // tweaked
     float H = 0.7f;
     float lacunarity = 2.0f;
     float offset = -0.6f;
@@ -150,7 +151,7 @@ R32FTexture* HybridMultifractal() {
     const int height = 512;
     float *perlin_data = perlin2D(width, height, 128);
 
-    ///--- fBm parameters
+    ///--- fBm parameters // tweaked
     float H = 0.5f;
     float lacunarity = 2.0f;
     float offset = 0.2f;
