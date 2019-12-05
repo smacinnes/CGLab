@@ -190,7 +190,7 @@ void genTerrainMesh() {
         for(unsigned int i=0; i<n_width; ++i) {
             /// TODO: calculate vertex positions, texture indices done for you
             points.push_back(start+Vec3(i*t_width,j*t_height,0.0f));
-            texCoords.push_back( Vec2( i/float(n_width-1), j/float(n_height-1)) );
+            texCoords.push_back(Vec2( i/float(n_width-1), j/float(n_height-1)));
         }
     }
 
