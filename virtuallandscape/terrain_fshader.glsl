@@ -27,30 +27,27 @@ void main() {
     /// TODO: Calculate surface normal N
     /// HINT: Use textureOffset(,,) to read height at uv + pixelwise offset
     /// HINT: Account for texture x,y dimensions in world space coordinates (default f_width=f_height=5)
-
-    // temp colouring before textures are applied
-    vec3 N  = vec3(0,0,1);
-    if (texture2D(noiseTex,uv).r > 0.0f){
-        vec3 A = vec3(uv.x +1.0/size.x, uv.y, textureOffset(noiseTex, uv, ivec2(1,0)));
-        vec3 B = vec3(uv.x -1.0/size.x, uv.y, textureOffset(noiseTex, uv, ivec2(-1,0)));
-        vec3 C = vec3(uv.x, uv.y +1.0/size.y, textureOffset(noiseTex, uv, ivec2(0,1)));
-        vec3 D = vec3(uv.x, uv.y -1.0/size.y, textureOffset(noiseTex, uv, ivec2(0,-1)));
-        N = normalize( cross(normalize(A-B), normalize(C-D)) );
+    vec3 N  = vec3(0,0,1);                      // default normal (water)
+    float height = texture2D(noiseTex,uv).r;    // height of terrain
+    if (height > 0.0f){
+        vec3 A = vec3(uv.x+1.0/size.x,uv.y,textureOffset(noiseTex, uv, ivec2(1,0)));
+        vec3 B = vec3(uv.x-1.0/size.x,uv.y,textureOffset(noiseTex, uv, ivec2(-1,0)));
+        vec3 C = vec3(uv.x,uv.y+1.0/size.y,textureOffset(noiseTex, uv, ivec2(0,1)));
+        vec3 D = vec3(uv.x,uv.y-1.0/size.y,textureOffset(noiseTex, uv, ivec2(0,-1)));
+        N = normalize( cross(normalize(A-B),normalize(C-D)) );
     }
     /// TODO: Texture according to height and slope
     /// HINT: Read noiseTex for height at uv
     // options for texture are water,sand,grass,rock,snow
     float waterLevel = 0.0f;    // all below this is water
     float sandLevel = 0.04f;    // sand can only be below this
-    float sandThresh = 0.1f;   // sand only if N.z greater than this
+    float sandThresh = 0.1f;    // sand only if N.z greater than this
     float snowLevel = 0.6f;     // snow can only be above this
     float rockThresh = 0.08f;   // rock if N.z less than this
 
-    float height = texture2D(noiseTex,uv).r;
+    int tiles = 32;                         // scene will be nxn grid of the images
+    vec2 pixel = tiles*uv - int(tiles*uv);  //  which pixel of an image to select
 
-    int tiles = 32; // make nxn grid of the images
-    vec2 pixel = tiles*uv - int(tiles*uv);
-    // some tweaking to do - ex repeating textures
     if (height <= waterLevel) {
         color = texture(water,pixel);
     } else if (N.z < rockThresh) {
@@ -71,13 +68,11 @@ void main() {
     vec3 V = normalize(viewPos-fragPos);
     float alpha = 2;
 
-    // make dependant on texture?
     vec4 ambient = vec4(0.8f,0.8f,0.8f,1);
     vec4 diffuse = vec4(0.8f,0.8f,0.8f,1)*max(dot(L,N),0);
     vec4 specular = vec4(0.5f,0.5f,0.5f,1)*pow(max(dot(R,V),0),alpha);
 
     color *= ambient + diffuse + specular;
     color = min(color,1);
-    //color = vec4((N + vec3(1.0)) / 2.0f,1);
 }
 )"
